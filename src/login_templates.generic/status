@@ -1,0 +1,36 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <link rel="stylesheet" type="text/css" href="media/pubcookie.css" />
+    <title>Example University Login</title>
+    %refresh%
+  </head>
+  <body>
+    <div id="mainwindow" class="status">
+      <div id="title">
+        Example University Login Status
+      </div>
+      <div id="mainarea">
+        <p class="message">
+          <img src="media/check.gif" align="absmiddle" alt="" height="35" width="35"/>
+          Logged in as: %contents%
+        </p>
+        <p class="message">
+          <img src="media/icon-time.gif" align="absmiddle" alt="" height="35" width="35"/>
+          Time Remaining: %remaining%
+        </p>
+        <p class="warning">
+          <strong>Warning:</strong> You are still logged in to Example 
+          University. To protect your privacy and prevent unauthorized use,
+          <strong>completely exit your web browser</strong> when you are
+          finished browsing. 
+        </p>
+      </div>
+      <div id="copyright">
+        Copyright &copy; 2006 by Example University
+      </div>
+    </div>
+  </body>
+</html>

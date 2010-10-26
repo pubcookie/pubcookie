@@ -1,0 +1,16 @@
+
+/*
+  $Id: CHANGES,v 1.2 2010/02/01 06:39:37 dors Exp $
+ */
+
+This version of CGIC is derived from Tom Boutell's CGIC and has been modified
+for use with pubcookie.  Here's somewhat of a version history
+
+cgic.c/rev1.4 - Fixed bug that caused granting request parsing problems
+(for referring URLs with no "name=value" args), which particularly affect
+session reauth. (Bug diagnosed and reported by Todd Ross.)
+
+cgic1.07pubcookie1.01 - new name. fixes from CMU. mostly to catch
+printing unitialized variables.
+
+cgic1.07UW - originally modified version, exports parsing of cgi args.

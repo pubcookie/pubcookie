@@ -1,0 +1,62 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <link rel="stylesheet" type="text/css" href="media/pubcookie.css" />
+    <title>Example University Login</title>
+  </head>
+  <body onLoad="document.query.elements[0].focus()">
+    <div id="mainwindow" class="login">
+      <div id="title">
+        Example University Login
+      </div>
+      <div id="mainarea">
+        <!-- custom login message -->
+        <div class="message">
+          %message%
+        </div>
+        <!-- end of custom login message -->
+      
+        <!-- reason we were sent here -->
+        <div class="message">
+          %reason%
+        </div>
+        <!-- end of reasons -->
+      
+        <form id="query" method="POST" action="%loginuri%"
+          enctype="application/x-www-form-urlencoded" autocomplete="off">
+          <table border="0" align="center">
+            <tr>
+              <td class="fieldname">User ID:</td>
+              <td>%user_field%</td>
+            </tr>
+            <tr>
+              <td class="fieldname">Password:</td>
+              <td>
+                <input type="password" name="pass" class="inputfield" />
+              </td>
+            </tr>
+            <tr>
+              <td class="fieldname"></td>
+              <td>
+                <input type="submit" value="Log in &raquo;" />
+              </td>
+            </tr>
+          </table>
+
+          <!-- The hidden fields -->
+          %hiddenuser%
+          %hiddenfields%
+          <!-- The GetCred target, if defined -->
+          %getcredhidden%
+          <!-- End of inserted stuff. -->
+        </form>
+      </div>
+      <div id="copyright">
+Version: %version% <br>
+        Copyright &copy; 2006 by Example University
+      </div>
+    </div>
+  </body>
+</html>

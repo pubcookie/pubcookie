@@ -1,0 +1,142 @@
+<html>
+
+<head>
+<title>Kerberos Credential Passing</title>
+<link rel="stylesheet" href="pubcookie.css" type="text/css" title="pubcookie">
+</head>
+
+<body>
+
+<h1>Kerberos Credential Passing</h1>
+
+<p>Note: Documentation can contain bugs too. The <a
+href="http://www.pubcookie.org/docs/krb5-getcred.html">online version of
+this document</a> is always the most up-to-date version. </p>
+
+<p><i>Included on this page:</i></p>
+
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#build">Build GetCred Flavor</a></li>
+<li><a href="#config">Configuration</a></li>
+<li><a href="#use">Requesting Kerberos Credentials</a></li>
+</ul>
+
+<h4><a name="overview">Overview</h4>
+
+<p>Using the "getcred" login flavor, trusted application servers can
+request Kerberos credentials for 3-tier authentication scenarios. This
+feature works along side of the "basic" login flavor and is only
+meaningful for sites with Kerberos 5 underpinings. 
+
+<h4><a name="build">Build GetCred Flavor</a></h4>
+
+<p>Support for the "getcred" login flavor comes for free; you don't
+actually have to do anything to build it in. But it won't do anything
+without the <a href="install-login.html#krb5">Kerberos 5 verifier</a>, so
+be sure to build it in using the <tt>--enable-krb5</tt> configure
+option.</p>
+
+<h4><a name="config">Configuration</h4>
+
+<p>To enable Kerberos credential passing in the login cgi, add the
+<tt>save_credentials</tt> variable to your config file and adjust the
+<tt>default_realm</tt> and <tt>append_realm</tt> variables as needed. For
+example:</p>
+
+<pre># kerberos verifier config
+basic_verifier: kerberos_v5
+kerberos5_service_name: pubcookie
+kerberos5_keytab: /usr/local/pubcookie/keys/pubcookie.keytab
+save_credentials: t
+getcred_authz_file: /usr/local/pubcookie/getcred_authz
+default_realm: MYREALM.EXAMPLE.EDU
+append_realm: true</pre>
+
+<p>The <tt>getcred_authz</tt> text file defines which application
+servers are allowed to request credentials from the "getcred"
+flavor.</p> Lines in this file have the following form:</p>
+
+<pre>hostname.myrealm.example.edu SERVICE/servicehost.myrealm.example.edu OK</pre>
+
+<p>But you can use wildcards. For example:</p>
+
+<pre>webmail.myrealm.example.edu imap/* OK
+my.example.edu imap/* OK
+portal-dev?.myrealm.example.edu imap/* OK
+cgi.myrealm.example.edu adm/* OK
+superdebug.myrealm.example.edu */* OK
+</pre>
+
+<p>This would allow a webmail server and a portal server to request
+IMAP service tickets; possibly more than one portal development servers
+(e.g., portal-dev1 and portal-dev2) to request IMAP service tickets; a
+dedicated CGI server to get ADM tickets (used for self-service quota
+setting); and your site administrator's personal test server to get any
+service ticket.</p>
+
+<h4><a name="use">Requesting Kerberos Credentials</a></h4>
+
+<p>Sites with a login server that support the "getcred" login flavor
+can configure the module to request additional Kerberos credentials for
+3-tier authentication scenarios.</p>
+
+<p>To configure the module to request that it be sent Kerberos
+credentials, configure the AuthType to specify your "getcred" login
+flavor and use the <a href=""></a> directive to specify the service
+ticket you want. For example:</p>
+
+<p> 
+<TABLE BGCOLOR="#E0E5F5" BORDER="0" CELLSPACING="0" CELLPADDING="5">
+<TR> 
+<TD> <pre>&lt;Location "/test"&gt;
+AuthType getcred
+require valid-user
+PubcookieAddlRequest cred_target=adm/admin.myrealm.example.edu
+&lt;/Location&gt;</pre></TD>
+</TR>
+</TABLE></p>
+
+<p>When someone navigates to the test directory, they will be sent off
+to the login server to get a Kerberos 5 service ticket for
+adm/admin.myrealm.example.edu.</p>
+
+<p>You can request multiple tickets with the following syntax:</p>
+
+<p> 
+<TABLE BGCOLOR="#E0E5F5" BORDER="0" CELLSPACING="0" CELLPADDING="5">
+<TR> 
+<TD> <pre>&lt;Location "/webmail"&gt;
+AuthType getcred
+Require valid-user
+PubCookieAddlRequest cred_target=imap/imap.myrealm.example.edu;smtp/smtp.myrealm.example.edu
+&lt;/Location&gt;</pre></TD>
+</TR>
+</TABLE></p>
+
+<p>Here whenever one navigates to the webmail directory, they'll be
+sent to the login server and to get both IMAP and SMTP tickets,
+presumably so they can read and send mail authenticated thru the
+webmail application.</p>
+
+<p>Kebereros tickets passed via the "getcred" flavor are stored in a
+separate Pubcookie session cookie on the application server. They are
+exposed to an application by means of a temporary file whose location is
+defined by the KRB5CCNAME environment variable (usually
+<tt>/tmp/k5cc_(pid)_(userid)</tt>). An application can retrieve the service
+ticket from this file and pass it as a credential to authenticate to
+appropriate services. Once the request has been handled the temporarily
+cached credentials are removed by the module.</p>
+
+<hr>
+<p>
+Copyright 2004-2007, University of Washington.  All rights reserved.<br />
+See doc/LICENSE.txt for terms of use.
+</p>
+<pre>
+$Id: krb5-getcred.html,v 1.7 2007/02/07 22:49:22 willey Exp $
+</pre>
+</body>
+
+</BODY>
+</HTML>

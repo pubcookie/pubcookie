@@ -1,0 +1,55 @@
+# 
+# Makefile.tmpl for the static mod_pubcookie module (apache 1.3)
+#
+# Apache Configure uses this to create a Makefile 
+# 
+
+PC_LIB=libpubcookie.$(LIBEXT)
+
+PC_OBJ=@MOD_OBJ@
+
+PC_HDR=@MOD_HDR@
+
+PC_DEFINES=-DAPACHE -DAPACHE1_3 -DHAVE_CONFIG_H -I.
+
+OBJS=$(PC_OBJ)
+
+# Build commands
+
+all:  lib
+lib: $(PC_LIB)
+
+libpubcookie.a: $(OBJS)
+	rm -f $@
+	ar cr $@ $(OBJS)
+	$(RANLIB) $@
+ 
+libpubcookie.so: $(OBJS)
+	rm -f $@
+	$(LD_SHLIB) $(LDFLAGS_SHLIB) -o $@ $(OBJS)
+
+.c.o:
+	$(CC) -c $(INCLUDES) $(CFLAGS) $(PC_DEFINES) \
+		$(SSL_CFLAGS) -I$(SSL_INCDIR) $<
+
+clean:
+	rm -f $(LIB) $(OBJS)
+
+distclean: clean
+	rm -f Makefile
+
+
+# Dependencies - don't have a compiler-independent way to make depend
+
+depend:
+	echo "static pubcookie has no dynamic depends"
+
+$(PC_OBJ): $(PC_HDR)                \
+     $(INCDIR)/httpd.h               \
+     $(INCDIR)/http_config.h         \
+     $(INCDIR)/http_request.h        \
+     $(INCDIR)/http_core.h           \
+     $(INCDIR)/http_protocol.h       \
+     $(INCDIR)/http_main.h           \
+     $(INCDIR)/http_log.h
+

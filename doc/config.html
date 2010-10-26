@@ -1,0 +1,411 @@
+<html>
+
+<head>
+<title>Pubcookie Config File Variable Reference</title>
+<link rel="stylesheet" href="pubcookie.css" type="text/css">
+</head>
+
+<body>
+
+<h1>Pubcookie Config File Variable Reference</h1>
+
+<p>This is the authoritative reference for variables you can use
+in the Pubcookie <tt>config</tt> file. Some variables are shared by
+all components; many pertain only to the login server components.</p>
+
+<p><i>Included on this page:</i></p>
+
+<ul>
+<li><a href="#common">Common Variables</a></li>
+<li><a href="#login">Login CGI Variables</a></li>
+<li><a href="#keyserver">Keyserver Variables</a></li>
+<li><a href="#krb5">Kerberos Verifier Variables</a></li>
+<li><a href="#ldap">LDAP Verifier Variables</a></li>
+<li><a href="#shadow">Shadow Verifier Variables</a></li>
+<li><a href="#fork">Fork Verifier Variables</a></li>
+<li><a href="#other">Other Variables</a></li>
+<li><a href="#values">Definitions</a></li>
+</ul>
+
+<p>See <a href="config.sample">config.sample</a> and <a 
+href="config.login.sample">config.login.sample</a> for example
+configuration for an application server and login server, respectively.</p>
+
+<h4><a name="common">Common Variables</a></h4>
+
+<p>The following variables are common to the keyclient, keyserver, and/or the 
+login cgi:</p>
+
+<dl>
+
+<dt> <a name="audit_facility">audit_facility</a> <i>string</i></dt>
+<dd> The log facility to log audit log messages.</dd>
+
+<dt> <a name="general_facility">general_facility</a> <i>string</i></dt>
+<dd> The log facility to log general log messages.</dd>
+
+<dt> <a name="granting_key_file">granting_key_file</a> <i>string</i></dt>
+<dd> Path and filename of the "granting" private key 
+     file (only found on login servers).</dd> 
+
+<dt> <a name="granting_cert_file">granting_cert_file</a> <i>string</i></dt>
+<dd> Path and filename of the "granting" certificate 
+     file (found on all servers).</dd>
+
+<dt> <a name="logging_level">logging_level</a> <i>int</i></dt>
+<dd> Defines how much information is logged; increase with your level of
+     frustration.</dd>
+<dd> Values: 0 (errors), 1 (audit activity, e.g. auths, redirects), 2 (debug lite), 
+     3 (verbose debug), 5 (verbose debug with HTML)</dd>
+
+<dt> <a name="login_host">login_host</a> <i>string</i></dt>
+<dd> The hostname of login server.</dd>
+<dd> Example: <i>weblogin.example.edu</i></dd>
+
+<dt> <a name="login_uri">login_uri</a> <i>full-uri</i></dt>
+<dd> The full URI of the login cgi.</dd>
+<dd> Example: <i>https://weblogin.example.edu</i></dd>
+
+<dt> <a name="logout_prog">logout_prog</a> <i>string</i></dt>
+<dd> The name under which direct logout is invoked, includes the path.</dd>
+<dd> Example: <i>/logout/index.cgi</i></dd>
+
+<dt> <a name="keydir">keydir</a> <i>string</i></dt>
+<dd> The location of the keystore; one symmetric encryption key for each 
+     participating server.</dd>
+
+<dt> <a name="keymgt_uri">keymgt_uri</a> <i>string</i></dt>
+<dd> The full URI of the keyserver.</dd>
+<dd> Example: <i>https://weblogin.washington.edu:2222</i></dd> 
+
+<dt> <a name="ssl_ca_file">ssl_ca_file</a> <i>string</i></dt>
+<dd> Path and filename containing trusted
+     Cerificate Authority certificates used by keyclient
+     and keyserver to verify peer certificates.</dd> 
+
+<dt> <a name="ssl_ca_path">ssl_ca_path</a> <i>string</i></dt>
+<dd> Path of directory containing trusted
+     Certificate Authority certificates named with OpenSSL 
+     hashes. Used by keyclient and keyserver to verify peer certificates.</dd>
+
+<dt> <a name="ssl_cert_file">ssl_cert_file</a> <i>string</i></dt>
+<dd> Path and filename of the SSL certificate.</dd> 
+
+<dt> <a name="ssl_key_file">ssl_key_file</a> <i>string</i></dt>
+<dd> Path and filename of the SSL key.</dd>  
+
+<dt> <a name="umask">umask</a> <i>string</i></dt>
+<dd> The umask used when creating files.</dd>
+
+<dt> debug <i>int</i></dt>
+<dd> Deprecated in Pubcookie 3.1. Use <tt>logging_level</tt> instead. Non-zero value enables debug 
+     logging. The higher the number, the more debugging output that is generated.</dd>
+
+</dl>
+
+<h4><a name="login">Login CGI Variables</a></h4>
+
+<p>The following variables are used only by the login cgi:</p>
+
+<dl>
+
+<dt> <a name="app_logout_string">app_logout_string-<i>servername</i>-<i>appid</i></a> <i>string</i></dt>
+<dd> A custom logout response msg for <i>appid</i> on <i>servername</i></dd> 
+
+<dt> <a name="append_realm">append_realm</a> <i>switch</i></dt>
+<dd> If true, the authentication
+     realm is appended to the user name after
+     authentication but before issuing cookies (eg,
+     the cookie will contain user@REALM)</dd> 
+
+<dt> <a name="basic_verifier">basic_verifier</a> <i>string</i></dt>
+<dd> The active verifier used by the basic login flavor.</dd>
+
+<dt> <a name="custom_login_message_dir">custom_login_message_dir</a> <i>string</i></dt>
+<dd> The directory for custom login message templates.</dd>
+<dd> Default: the root directory for login templates (see <a href="#template_root">template_root</a>).</dd>
+
+<dt> <a name="custom_login_file_prefix">custom_login_file_prefix</a> <i>string</i></dt>
+<dd> The filename prefix used for each custom login message template. This prefix helps if
+     custom login messages are stored in the same directory as the other login templates. 
+     The prefix helps you keep them apart.</dd>
+<dd> Default: <tt>custom_login_msg</tt></dd>
+
+<dt> <a name="default_realm">default_realm</a> <i>string</i></dt>
+<dd> optional default authentication realm to pass to the 
+     verifier when none is submitted via the form</dd>
+
+<dt> <a name="default_l_expire">default_l_expire</a> <i>time</i></dt>
+<dd> Defines the default duration of a single sign-on session (login cookie expiry).</dd>
+<dd> Default: 8 hours.</dd>
+
+<dt> <a name="egd_socket">egd_socket</a> <i>socket-locatin</i></dt>
+<dd> Location of EGD socket (e.g. /dev/egd-pool) if your system lacks entropy.</dd>
+
+<dt> <a name="enterprise_domain">enterprise_domain</a> <i>string</i></dt>
+<dd> The DNS domain used to scope the cookies that carry the messages in Pubcookie's 
+     classic cookie-based messaging method. It must be at least a second level domain.</dd>
+<dd> Note: Sites can use the POST-based messaging method to avoid DNS domain issues 
+     entirely. And sites in country code top-level domains (e.g. example.ca) must do 
+     so, since browsers don't allow cookies to be set to second level domains within 
+     country code top-level domains.</dd>
+<dd> Example: <i>.example.edu</i></dd>
+
+<dt> <a name="form_expire_time">form_expire_time</a> <i>time</i></dt>
+<dd> Defines how long someone can take to log in before the login form
+     expires. This provides some protection against replaying the login
+     form later. The value is in seconds.</dd> 
+<dd> Default: 60 seconds.</dd>
+
+<dt> <a name="kiosk">kiosk</a> <i>special</i></dt>
+<dd> Kiosk policy configuration for reduced SSO duration; matches by
+     user-agent string, remote IP addresses, or IP address ranges.</dd>
+<dd> Syntax: <tt>time agent|ip [agent|ip] ... [ time agent|ip ... ]</tt></dd>
+
+<dt> <a name="login_host_cookie_domain">login_host_cookie_domain</a> <i>domain</i></dt>
+<dd> The domain used by the login cgi when setting its own cookies.</dd>
+<dd> Default: No domain is used unless this variable defines one.</dd>
+<dd> Example: <i>login.example.edu</i></dd>
+
+<dt> <a name="lowercase_username">lowercase_username</a> <i>int</i></dt>
+<dd> Defines the site policy on changing the username entered to
+     lower case.</dd>
+<dd> Values: <tt>1</tt>, changes to lower case. <tt>0</tt> doesn't.</dd>
+<dd> Default: 0</dd>
+
+<dt> <a name="min_countdown">min_countdown</a> <i>time</i></dt>
+<dd> The minimum countdown for automatically reloading the status page.</dd>
+
+<dt> <a name="mirrorfile">mirrorfile</a> <i>string</i></dt>
+<dd> Full path to a file to keep a mirrored copy of all output sent 
+     to the client by the most recent call to the login cgi</dd>
+                        
+<dt> <a name="retain_username_on_failed_authn">retain_username_on_failed_authn</a> <i>int</i></dt>
+<dd> Defines whether the userid is retained on failed authentication attempts.</dd>
+<dd> Values: <tt>1</tt> to retain; <tt>0</tt> not to retain.</dd>
+<dd> Default: <tt>0</tt>.</dd>
+                        
+<dt> <a name="clear_username_at_logout">clear_username_at_logout</a> <i>int</i></dt>
+<dd> Defines whether the userid is cleared on logout.</dd>
+<dd> Values: <tt>1</tt> to clear; <tt>0</tt> not to clear.</dd>
+<dd> Default: <tt>0</tt>.</dd>
+
+<dt> <a name="static_user_field">static_user_field</a> <i>enumerated</i></dt>
+<dd> Defines the site policy on the editability of the userid field on the login page.</dd>
+<dd> Values: <tt>never</tt>, which never denies the user to change the userid,
+     even on session reauth; <tt>kind</tt>, which allows the user to change the userid if
+     the login cookie has expired; and <tt>always</tt>, which keeps the userid field static 
+     and uneditable whenever there is a userid available in the login cookie (expired or 
+     otherwise).</dd>
+<dd> Default: <tt>kind</tt>.</dd>
+
+<dt> <a name="template_root">template_root</a> <i>string</i></dt>
+<dd> The root directory for the templates.</dd>
+<dd> Default: <tt>PREFIX/login_templates</tt>.</dd>
+</dd>
+
+<dt> <a name="trim_username_to_atsign">trim_username_to_atsign</a> <i>int</i></dt>
+<dd> Defines the site policy on verifying userids that have been 
+     entered as email addresses.</dd>
+<dd> Values: <tt>1</tt>, trims off the realm before verifying; 
+     <tt>0</tt>, doesn't trim.</dd>
+<dd> Default: <tt>1</tt>.</dd>
+
+<dt> <a name="uppercase_username">uppercase_username</a> <i>int</i></dt>
+<dd> Defines the site policy on changing the username entered to
+     upper case.</dd>
+<dd> Values: <tt>1</tt>, changes to upper case. <tt>0</tt> doesn't.</dd>
+<dd> Default: 0</dd>
+
+<!-- lets put deprecated variables down here for now -->
+
+<dt> kiosk_keys <i>list</i></dt>
+<dd> Deprecated in Pubcookie 3.1. Use <tt>kiosk</tt> instead.</dd>
+
+<dt> kiosk_values <i>list</i></dt>
+<dd> Deprecated in Pubcookie 3.1. Use <tt>kiosk</tt> instead.</dd>
+
+</dl>
+
+<h4><a name="keyserver">Keyserver Variables</a></h4>
+
+<p>The following variables are used only by the keyserver:</p>
+
+<dl>
+
+<dt> <a name="login_servers">login_servers</a> <i>list</i></dt>
+<dd> List of all of the login servers URLs for our domain;
+     keyserver uses this to distribute keys to the other
+     login servers</dd>
+
+<dt> <a name="keymgt_peers">keymgt_peers</a> <i>list</i></dt>
+<dd> The peer host(s) authorized to push keys to this keyserver. Used when a 
+     keyserver host is not in the keyserver cluster.</dd>
+
+<dt> <a name="keyserver_client_list">keyserver_client_list</a> <i>list</i></dt>
+<dd> The hosts authorized to use the keyclient "permit" option to 
+     add new servers to the keystore.</dd>
+
+<dt> <a name="keyserver_max_wait_time">keyserver_max_wait_time</a> <i>time</i></dt>
+<dd> Sets the maximum time that keyserver
+     will wait for data after a connection is established.
+     Non-zero value allows keyserver to break hung connections.</dd>
+<dd> Default: zero (i.e. off, no timeout).</dd>
+
+</dl>
+
+<h4><a name="krb5">Kerberos Verifier Variables</a></h4>
+
+<dl>
+
+<dt> <a name="kerberos5_keytab">kerberos5_keytab</a> <i>string</i></dt>
+<dd> Full path to the K5 keytab file that contains the service key.</dd>
+<dd> Default: <tt>/etc/krb5.keytab</tt></dd>
+
+<dt> <a name="kerberos5_service_name">kerberos5_service_name</a> <i>string</i></dt>
+<dd> Service name or "primary" used in the principal for
+     the service key. 
+<dd> Default: <tt>host</tt></dd>
+
+<dt> <a name="kerberos5_extralife">kerberos5_extralife</a> <i>time</i></dt>
+<dd> Adds extra ticket lifetime to delegated kerberos5 tickets. The total
+lifetime is equal to <tt>default_l_expire + kerberos5_extralife</tt>.
+This provideds a longer ticket lifetime than the login
+cookie lifetime and can be helpful when delegating credentials to an
+application just before the login cookie expires.
+
+<dt> <a name="save_credentials">save_credentials</a> <i>switch</i></dt> 
+<dd> Controls whether the basic flavor, when used with the Kerberos verifier,
+     saves a copy of the user's master credentials for later use by flavor_getcred.</dd> 
+
+<dt> <a name="getcred_authz_file">getcred_authz_file</a> <i>string</i></dt> 
+<dd> flavor_getcred uses this file to determine which application are authorized 
+     to request what credentials.</dd>
+
+</dl>
+
+<h4><a name="ldap">LDAP Verifier Variables</a></h4>
+
+<dl>
+
+<dt> <a name="ldap_uri">ldap_uri</a> <i>list</i></dt>
+<dd> The full LDAP URI. The LDAP verifier uses this URI to
+bind to the directory and search for a DN that matches the
+userid as entered into the login form. If it finds an entry 
+for the user, it does another bind to verify the user's 
+password as entered into the login form. If it can't even 
+connect to the directory, it will fail over to the next URI
+in the list, if there is another one to try.
+
+<dd> <p>URI Format:
+<pre>ldaps://host/o=searchbase???<i>(uid=%s)</i>?x-BindDN=<i>Bind%20DN</i>,x-Password=<i>Password</i>
+ldap://host/o=searchbase???<i>(uid=%s)</i>?x-BindDN=<i>Bind%20DN</i>,x-Password=<i>Password</i></pre>
+</dd>
+
+<dd> <p>Note: A port number can be optionally added to the <tt>host</tt> string.</dd>
+
+<dd> <p>Note: <tt><i>(uid=%s)</i></tt> is the search filter for finding an account by userid.  
+     The <tt>%s</tt> will be replaced with the userid as entered into the login form. The 
+     search filter can only contain one <tt>%s</tt> at this time.</dd>
+
+<dd> <p>Note: <tt><i>x-BindDN</i></tt> and <tt><i>x-Password</i></tt> are the initial bind DN and password, 
+     URL encoded. They may be omitted entirely if the connection is anonymous (and anonymous
+     connections are allowed). <b>Warning:</b> Commas must be URL encoded as <tt>%2C</tt> 
+     and spaces as <tt>%20</tt>.</dd>
+
+<dd> <p>Note: <tt>x-Version=2</tt> can be added to the URI to force LDAP version 2.</p>
+
+<dd>Example:
+<pre>ldaps://ldap.example.edu/dc=example,dc=edu???(uid=%s)?x-BindDN=cn=<i>bind_user</i>;%2Cou=people%2Cdc=example%2Cdc=edu,x-Password=<i>bind_pw</i></pre>
+</dd>
+
+<dd> <p>Note: <tt><i>bind_user</i></tt> and <tt><i>bind_pw</i></tt> are userid and password
+used in the initial bind to the server.</p>
+
+<dt> <a name="cert_db_path">cert_db_path</a> <i>string</i></dt>
+<dd> Path to cert7.db and key3.db files when using Sun/Netscape/iPlanet LDAP libraries.
+     (When using OpenLDAP libraries configure this sort of thing in your ldap.conf file.)</dd>
+<dd> Default: <tt>PREFIX/keys</tt></dd>
+
+<dt> <a name="ldap_tls">ldap_tls</a> <i>switch</i></dt>
+<dd> Switch to enable LDAPS Connection. </dd>
+
+<dt> <a name="ldap_key_file">ldap_key_file</a> <i>string</i></dt>
+<dd> Key file for LDAPS </dd>
+
+<dt> <a name="ldap_cert_file">ldap_cert_file</a> <i>string</i></dt>
+<dd> Certificate file for LDAPS </dd>
+
+<dt> <a name="ldap_ca_file">ldap_ca_file</a> <i>string</i></dt>
+<dd> CA Certificate for verifying the LDAPS Server Certificate. </dd>
+
+</dl>
+
+<h4><a name="shadow">Shadow Verifier Variables</a></h4>
+
+<dl>
+
+<dt> <a name="shadow_path">shadow_path</a> <i>string</i></dt>
+<dd> Location of shadow file.</dd>
+<dd> Default: <tt>/etc/shadow</tt></dd>
+
+</dl>
+
+<h4><a name="fork">Fork Verifier Variables</a></h4>
+
+<dl>
+
+<dt> <a name="verify_exe">verify_exe</a> <i>string</i></dt>
+<dd> Location of program used by fork verifier.
+<dd> Example: <i>/path/to/script.pl</i></dd>
+
+</dl>
+
+<h4><a name="other">Other Variables</a></h4>
+
+<dl>
+
+<dt> <a name="relay_login_uri">relay_login_uri</a> <i>string</i></dt>
+<dd> Deprecated. Cross dns domain support is built-in as of version 3.2. 
+     The full URI used by the relay cgi for its login cgi.</dd>
+<dd> Example: <i>https://login.example.edu/</i></dd>
+
+<dt> <a name="relay_template_path">relay_template_path</a> <i>string</i></dt>
+<dd> Deprecated. Cross dns domain support is built-in as of version 3.2. 
+     Path and directory, with trailing slash, to the <tt>templates</tt> directory
+     used by the relay cgi. The path is defined by setting the relay cgi's 
+     configuration <tt>--prefix</tt> option.</dd>
+<dd> Example: <i>/var/www/html/relay/templates/</i></dd>
+
+<dt> <a name="relay_uri">relay_uri</a> <i>full-uri</i></dt>
+<dd> Obsolete. This variable was removed in Pubcookie 3.1.1, as the 
+     relay can determine its URI by the request. In Pubcookie 3.1.0, 
+     it defines the full URI of the relay cgi. Configured in the 
+     application server's <tt>config</tt> file.</dd>
+<dd> Example: <i>https://appserver.example.edu/pcrelay/</i></dd>
+
+</dl>
+
+<h4><a name="defs">Definitions</a></h4>
+
+<p>Some of the config variables share the same types of values.</p>
+
+<dl>
+
+<dt> <i>int</i></dt>
+<dd> an integer value</dd>
+
+<dt> <i>string</i></dt>
+<dd> a character string value </dd>
+
+<dt> <i>list</i></dt>
+<dd> a list of string values </p>
+
+<dt> <i>time</i> </dt>
+<dd> an integer value representing time in seconds; use 
+     a suffix of 'm' to mean minutes or 'h' to mean hours, 
+     e.g. 5m means minutes, 1h means an hour.</dd>
+</dl>
+
+</body>
+</html>

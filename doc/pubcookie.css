@@ -1,0 +1,19 @@
+body {
+    background-color: white;
+}
+
+pre {
+    background-color: #E0E5F5;
+    padding: 5px;
+}
+
+dt {
+    margin-top: 0.5em;
+    font-weight: bold;
+}
+
+li, dt, dd {
+    line-height: 1.3em;
+}
+
+

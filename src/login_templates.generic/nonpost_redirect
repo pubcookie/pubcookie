@@ -1,0 +1,15 @@
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
+<html>
+  <head>
+    <SCRIPT LANGUAGE="JavaScript">
+      window.location.replace("%url%");
+    </SCRIPT> 
+    <NOSCRIPT>
+      <meta http-equiv="Refresh" content="%delay%;URL=%url%">
+    </NOSCRIPT> 
+    <title>pubcookie redirect</title>
+  </head>
+  <body>
+  </body>
+</html>
+

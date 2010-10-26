@@ -1,0 +1,32 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <link rel="stylesheet" type="text/css" href="media/pubcookie.css" />
+    <title>Example University Login</title>
+  </head>
+  <body>
+    <div id="mainwindow" class="status">
+      <div id="title">
+        Example University Login Error
+      </div>
+      <div id="mainarea">
+        <p class="message">
+          Sorry, the system has encountered a problem. Please contact
+          <a href="mailto:help@example.edu">help@example.edu</a> for
+          further assistance with the following information:
+        </p>
+        <div class="message">
+          %subtext%
+        </div>
+        <div class="message">
+         %reason%
+        </div>
+      </div>
+      <div id="copyright">
+        Copyright &copy; 2006 by Example University
+      </div>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,32 @@
+# 1 is a good starting point
+logging_level: 1
+
+# the credential verifier used by the basic flavor
+basic_verifier: alwaystrue
+
+# SSL session keypair
+ssl_key_file: /etc/httpd/conf/ssl.key/server.key
+ssl_cert_file: /etc/httpd/conf/ssl.crt/server.crt
+
+# granting keypair 
+granting_key_file: /usr/local/pubcookie/keys/pubcookie_granting.key
+granting_cert_file: /usr/local/pubcookie/keys/pubcookie_granting.cert 
+
+# login server config
+login_uri: https://login.example.edu/
+login_host: login.example.edu
+enterprise_domain: .example.edu
+logout_prog: /logout/index.cgi
+
+# keyserver config
+keymgt_uri: https://login.example.edu:2222
+keyserver_client_list: login.example.edu trusted.example.edu
+ssl_ca_file: /etc/httpd/conf/ssl.crt/ca-bundle.crt
+
+# site-specific policies
+default_l_expire: 8h
+form_expire_time: 120
+
+# custom logout msgs
+app_logout_string-appserver.example.edu-testapp: <font size="+1">Testapp logout worked just fine.</font>
+app_logout_string-webmail.example.edu-webmail: <font size="+1">Webmail Logout Successful!</font>

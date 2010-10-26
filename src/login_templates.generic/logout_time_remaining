@@ -1,0 +1,5 @@
+<p class="message">
+  <img src="media/icon-time.gif" align="absmiddle" alt="" height="35" width="35"/>
+  Time Remaining: %remaining%
+</p>
+

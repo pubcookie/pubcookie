@@ -1,0 +1,843 @@
+<html>
+	<head>
+		<title>Pubcookie ISAPI Filter - Install Guide</title>
+		<link rel="stylesheet" href="pubcookie.css" type="text/css" title="pubcookie">
+	</head>
+	<body>
+		<h1>Pubcookie ISAPI Filter - Install Guide</h1>
+
+		<p>Note: Documentation can contain bugs too. The <a href="http://www.pubcookie.org/docs/install-filter.html">
+		online version of this document</a> is always the most up-to-date version.</p>
+
+		<p><i>Included on this page:</i></p>
+		<ul>
+			<li>
+				<a href="#overview">Overview</a>
+			<li>
+				<a href="#news">What's New</a>
+			<li>
+				<a href="#compatibility">Compatibility Notes</a>
+			<li>
+				<a href="#prereq">Prerequisites</a>
+			<li>
+				<a href="#sysreq">System Requirements</a>
+			<li>
+				<a href="#install">Installing Pubcookie</a>
+			<li>
+				<a href="#iis6">Web Service Extension Config (IIS 6.0)</a>
+			<li>
+				<a href="#review">Reviewing Pubcookie Installation</a>
+			<li>
+				<a href="#config">Pubcookie Configuration Overview</a>
+			<li>
+				<a href="#auth">How to Configure Authentication</a>
+			<li>
+				<a href="#keyclient">Running Keyclient.exe</a>
+			<li>
+				<a href="#clusters">Clustered Host Configuration</a>
+			<li>
+				<a href="#vhosts">Multiple Web Site Configuration</a>
+			<li>
+				<a href="#msiexec">Pubcookie Installer Msiexec Options</a></li>
+			<li>
+				<a href="#upgrade">Upgrading Pubcookie</a></li>
+			<li>
+				<a href="#uninstall">Uninstalling Pubcookie</a></li>
+			<li>
+				<a href="#problems">Known Problems</a></li>
+			<li>
+				<a href="#certs">Appendex A: Windows Certificate Store</a></li>
+		</ul>
+
+		<h4><a name="overview">Overview</a></h4>
+
+		<p>This guide helps Microsoft Internet Information Server administrators 
+		to install, configure and use the Pubcookie 3.3 ISAPI filter, herein referred to as, 
+		simply, <i>the filter</i>.</p>
+
+		<p>The filter controls user authentication. When a resource is
+		protected with a Pubcookie authentication type, access to the resource is controlled by
+		the filter and users must be able to get through the authentication process before
+		IIS can serve the requested resource. The filter sets a <tt>HTTP_PUBCOOKIE_USER</tt> 
+		server variable containing the user's id when authentication is successful.
+
+		<p>The filter does not provide authorization; it's up to the resource/application to 
+		decide what the authenticated user is privileged to do.</p>
+
+		<h4><a name="news">What's New</a></h4>
+
+                <p>Significant changes in Pubcookie 3.3.4:</p>
+
+                <ul>
+                    <li><p><b>Fixed Stack Buffer Overflow in ISAPI Filter.</b>
+                    Applied security fix to address stack buffer overflow vulnerability described in 
+                    <a href="http://pubcookie.org/news/20100201-apps-secadv.html">February 1, 2010 security advisory</a>.</p></li>
+                    <li><p><b>Fixed query string encoding bug in Meta-Refresh redirect.</b> When enforcing https, the filter
+                    re-encodes query string arguments prior to redirection, so that values aren't truncated.</p></li>
+                </ul>
+
+                <p>Significant changes in Pubcookie 3.3.3:</p>
+
+                <ul>
+                    <li><p><b>Logging level changed for expired granting cookie messages.</b>
+                    This should help troubleshoot authentication failures due to incorrect date/time settings.</p></li>
+                </ul>
+
+                <p>Significant changes in Pubcookie 3.3.2c:</p>
+
+                <ul>
+                    <li><p><b>Rebuilt PubcookieFilter DLL using OpenSSL 0.9.7f libraries.</b> 
+                    This fixes signature verify problems with multi-threading on multi-CPU 
+                    IIS servers.</p></li>
+                </ul>
+
+                <p>Significant changes in Pubcookie 3.3.2b:</p>
+
+                <ul>
+                    <li><p><b>Improved handling of odd characters in path and query strings.</b> 
+                    The filter now matches the Apache module's handling of odd characters in 
+                    the requested uri's path and query; this fixes possible truncation of uri's
+                    sent through the login process.</p></li>
+                    <li><p><b>Verify non-empty userid.</b> Modified the ISAPI filter to disallow
+                    empty userids in the granting reply unless the No_Prompt setting is on.</p></li>
+                </ul>
+
+                <p>Significant changes in Pubcookie 3.3.1:</p>
+
+                <ul>
+                    <li><p><b>Fixed duplicate HTTP header values.</b> Replaced AddHeader() with SetHeader() in the ISAPI filter
+                    to eliminate duplicate HTTP Header values. </p></li>
+
+                    <li><p><b>Modified session reauthenticaiton messaging.</b> The filter now verifies that the login cgi handled a
+                    reauthentication request when session reauthentication is configured. (Requires 3.3.1 or higher login server.)</p></li>
+
+                </ul>
+
+                <p>Significant changes in Pubcookie 3.3.0a:</p>
+
+                <ul>
+                    <li><p><b>Changed redirection method.</b> Modified extension to use HTTP 302 redirects instead
+                    of meta-refresh on redirect back to the resource. Also updated the handling of output values
+                    when printing redirect pages.</p></li>
+
+                    <li><p><b>Dumpvars.asp removed.</b> The dumpvars.asp file was removed from the sample web application.</p></li>
+                </ul>
+		
+		<p>Significant changes in version 3.3.0:</p>
+
+		<ul>
+			<li>
+				<p><b>Added AES encryption support.</b> AES is now the default encryption algorithm requested by and
+                                used by the filter to encrypt and decrypt private data. To interoperate with earlier versions of the
+                                login server, use the IIS Manager to set the new Encryption Method directive to DES for your web
+                                site.</p>
+			<li>
+				<p><b>Removed pre-session cookie countermeasure.</b> Unneeded complexity and, as it turns out, an
+                                unnecessary countermeasure when messages are communicated using HTTP POST message bodies as they've
+                                been since the 3.2 release.
+			<li>
+				<p><b>Fixed AppID display in MMC snap-in.</b> The Pubcookie Directives tab displays the correct default,
+                                inherited, or explicitly applied AppId setting that is being used by the ISAPI filter itself.
+			<li>
+				<p><b>Removed Enterprise_Domain directive from MMC extension.</b> Obsolete since the 3.2 release.
+
+		</ul>
+
+		<p>Significant changes in version 3.2:</p>
+
+		<ul>
+			<li>
+				<p><b>PubcookieFilter DLL now acts as an ISAPI extension
+                                as well as an ISAPI filter.</b> As before, the filter manages access to
+                                resources and initiates authentication. The extension has been added to
+                                consume replies from the login server. Together, they implement the
+                                POST-based login method introduced in the Pubcookie 3.2.0 Apache module.
+                                This change effectively replaces the classic enterprise-cookie-based method 
+                                used in the past. As a result, Enterprise_Domain has been removed from the 
+                                installer, and the relay cgi has been removed altogether.
+			<li>
+				<p><b>Updated Windows Installer package (Pubcookie.msi).</b> Site Information 
+                                screen now provides 3 keyclient options: obtain new key, retrieve old key,
+                                or don't run keyclient at all. Also, the installer now continues after 
+                                keyclient errors rather than rolling back; this allows you to troubleshoot 
+                                and then re-run the keyclient manually to obtain granting certificate and 
+                                encryption key.
+			<li>
+				<p><b>Enhanced Keyclient.exe.</b> When run manually, it offers a certificate picker to 
+                                choose among multiple valid certificates.
+			<li>
+				<p><b>Fixed problems reading registry settings.</b> The filter is more consistent about
+				reading and applying default configuration, as well as configuration defined through 
+				alternate WebVarLocations. The related bugs in version 3.1.1 have been fixed.
+			<li>
+				<p><b>Updated Cache-control headers.</b> The Pubcookie filter matches the Apache module's
+				headers for redirections to the login server.</b>
+			<li>
+				<p><b>Favicon location exempted.</b> Fixes problems with some browsers, especially
+				Firefox, when the favicon is protected.
+			<li>
+				<p><b>Updated OpenSSL 0.9.7.f libraries.</b>
+			<li>
+				<p><b>Other bug fixes and improved memory management.</b>
+
+		</ul>
+
+		<h4><a name="compatibility">Compatibility</a></h4>
+
+                <p>Here are some compatibility notes for version 3.3:</p>
+
+                <dl>
+
+                <dt>Compatibility note on version 3.3 encryption options:</dt>
+                <dd>The version 3.3 filter supports different encryption algorithms. AES encryption is the default. However, earlier
+                versions of the login server only support one algorithm, DES, so you will have to determine the version of your
+                login server and set the Encryption Method directive accordingly. It may make the most sense to do this at the
+                web site level.
+
+		<p><img src="images/encryption.jpg">
+
+                <dt>Upgrading from version 3.0/3.1/3.2 to 3.3:</dt>
+                <dd>Servers being upgraded from version 3.0/3.1/3.2 to version 3.3 should be aware that version 3.3 expects and uses
+                AES encryption by default. If your login server is version 3.3 or higher there is no concern; it supports
+                authentication requests that ask for AES encrypted replies. However, to interoperate with earlier versions of the
+                login server, you must set the Encryption Method directive to use DES encryption for your web site. This will ensure
+                that your upgraded filter continues to use DES encryption. 
+
+                <p>If your login server is version 3.3 higher and therefore allows you to use AES encryption, you should note that
+                session cookies encrypted with DES cannot be unencrypted with AES. As a result, session cookies obtained by users
+                prior to upgrading the module will be invalid after the upgrade. This means some users will be redirected through
+                the login server to establish a new session.</p>
+
+                <p>Clustered hosts should be upgraded with special care to keep all cluster members using the same encryption
+                method.</p>
+
+                <p>Note: You do not have to request a new encryption key to use version 3.3. Your current host key works equally
+                well for AES and DES encryption.</p>
+
+                <dt>Upgrading from version 2.7 to 3.3:</dt>
+                <dd>Servers being upgraded from earlier versions of the filter (classic versions, such as version 2.7) may require
+                configuration changes. Extra care should be given to reviewing that authentication is working as expected after the
+                upgrade. Also review the sections on <a href="#vhosts">multiple web site configuration</a> and <a
+                href="#clusters">clustered host configuration</a> if they apply to your environment.
+
+                <p>Servers being upgraded from earlier versions should also be aware of the switch to AES encryption noted in the
+                compatibility notes above.</p>
+
+                <p>Also recall that version 2.7 requires an encryption key specific to your primary IP address. If you want to be
+                able to rollback to version 2.7 more easily, you should keep your current key intact on your server as well as on
+                your site's Pubcookie login server. To do so, select the option to retrieve your old key when working through the
+                installer; otherwise it will obtain a new key from the keyserver, one that isn't compatible with version 2.7.</p>
+
+                </dl>
+
+		<h4><a name="prereq">Prerequisites</a></h4>
+
+		<p>The filter relies on additional infrastructure at your site. Here are some 
+		general prerequisites that, if fulfilled, will lead to a smooth, successful 
+		installation.</p>
+
+		<ul>
+			<li>
+				<p>Define a Default Web site for IIS Instance ID 1 and verify that it is running. 
+                                The installer requires that IIS instance ID 1 is defined and running. (Yes, this
+                                can be an onerous prerequisite, which we intend to change in a future release.) 
+                                Also, on IIS 6.0, verify that the Default application pool is running.</p>
+			<li>
+				<p>Determine the location of your site's Pubcookie login server. The installer 
+				needs this URL during installation. You may also want to find out its version, 
+				so that you know what features it supports.</p>
+			<li>
+				<p>Determine the location of your site's Pubcookie keyserver. The installer needs 
+				this URL to download your site's Pubcookie "granting" certificate and to request 
+				a symmetric encryption key that your server will share with 
+				your login server. Depending on the keyserver version and site policy, you may 
+				also need to ask your administrator to "permit" your server to request keys.</p>
+			<li>
+				<p>Determine how trust is handled by your site's Pubcookie keyserver. You'll need 
+				to know which Certificate Authorities the keyserver trusts to verify 
+				certificates. Similarly, you'll need to know which Certificate Authority can 
+				verify the keyserver's certificate. Ask your administrator for guidelines; 
+				it'll save you time and effort.</p>
+		</ul>
+
+		<p>Note: Review the sections on <a href="#vhosts">multiple web site configuration</a> or
+                <a href="#clusters">clustered host configuration</a> now if either of those scenarios apply. 
+		The information will help you think about and tailor the installation as 
+		needed.</p>
+
+		<h4><a name="sysreq">System Requirements</a></h4>
+
+		<p>The Pubcookie ISAPI filter has the following system requirements:</p>
+
+		<ul>
+			<li>
+				<p>Microsoft Windows 2000 or later</p>
+			<li>
+				<p>Microsoft Internet Information Server (IIS) 4.0 or later</p>
+			<li>
+				<p>Accurate system time</p>
+			<li>
+				<p>Domain name registered in DNS (e.g. <i>appserver.example.edu</i>).</p>
+			<li>
+				<p>An SSL enabled web site. All intended users should be able to reach your website 
+				via HTTPS at your registered DNS name without errors.</p>
+			<li>
+				<p>The <tt>System32\inetsrv</tt> folder should be world writable or writable by the 
+				administrator account running the installer.</p>
+			<li>
+				<p>After installation, the IUSR account must be able to read and execute 
+ 				<tt>System32\inetsrv\Pubcookie\PubCookieFilter.dll</tt>.</p>
+		</ul>
+
+		<h4><a name="install">Installing Pubcookie</a></h4>
+
+                <p>This section describes how to install Pubcookie using the provided Windows Installer package 
+                (Pubcookie.msi). We'll cover a fairly typical installation and note significant exceptions and more
+                advanced uses when possible.</p>
+
+		<ol>
+
+			<li>
+                        	<p>Log in as Administrator or as an account with administrator privileges.
+				The installer needs to be able to create folders and files in <tt>System32\inetsrv</tt>,
+				to stop and start system services, to modify the Windows registry, and to read private keys in 
+				the Windows certificate store.
+
+				<p>Note: The installer can be run from the command prompt, or from within a batch file,
+				with pre-defined site information. See the <a href="#msiexec">msiexec options</a> section
+				for details.
+
+			<li>
+				<p>Run the Pubcookie.msi installer. Click Next on the initial Welcome screen.
+
+				<p><img src="images/welcome.jpg">
+
+				<p>Note: If the installer says, mysteriously, <i>"The wizard was interrupted before Pubcookie3 could
+                                be completely installed"</i>, click Finish and run it again. (See Installer errors in the
+                                <a href="#problems">Known Problems</a> section below.)</p>
+
+
+			<li>
+				<p>Pubcookie is licensed under the Apache License, Version 2.0. 
+				If you accept the terms of the license, select the appropriate radio button and click Next.
+
+				<p><img src="images/license.jpg">
+
+			<li>
+				<p>The Site Information screen lets you enter your server name, login server and
+				keyserver locations, authentication flavors, and lets you select your desired
+				keyclient behavior. Enter your Site Information and click Next.
+
+				<p><img src="images/siteinfo.jpg">
+
+				<p>Note: Your server name should match the Common Name of your site's SSL certificate.
+
+			<li>
+				<p>The Custom Setup screen lets you choose what to install and where to install it. 
+				By default, the filter and sample web application are selected, with fairly
+				standard installation locations. Adjust as needed and click Next.
+
+				<p><img src="images/custom.jpg">
+
+
+			<li>
+				<p>The Ready screen indicates the installer is ready. Read through the steps below
+				to learn what it's going to do. It will display a Status bar, and provide a Cancel
+				button which is fairly good at rolling things back out, but this is the stage where 
+				installation really begins. When you're ready to proceed, click the Install button. 
+
+				<p><img src="images/ready.jpg">
+
+			<li>
+				<p>Installation begins by adding Pubcookie to the Root Filter list in the IIS Metabase.
+				If you instead want to add Pubcookie to specific web sites, use the Internet Information
+				Services (IIS) Manager to do so after installation. (Hereafter referred to as the
+				IIS Manager, you can find it at Start &gt; Programs &gt; Administrative Tools.)
+
+				<p>Installation also adds your Site Information to the Windows registry
+				as your initial Pubcookie configuration settings and installs a MMC snap-in
+				that adds Pubcookie configuration tabs to Properties dialogs within 
+				the IIS Manager.
+
+                                <p>Note: See Installer errors in the <a href="#problems">Known Problems</a> section 
+                                below if the installer is interrupted during installation.</p>
+
+			<li>
+				<p>Next, your IIS Service will be stopped.
+
+			<li>
+				<p>The installer will now run the keyclient according to the behavior you
+				selected on the Site Information screen. The default behavior is to request your site's
+				granting certificate and generate a new key, both of which are saved to a new
+				<tt>System32\inetsrv\Pubcookie\keys\</tt> folder. Click OK on the corresponding
+				pop-up messages from the keyclient.
+
+				<p>Note: The keyclient must find a certicate and private key in your
+				Personal certificate store that matches the server name entered in the Site
+				Information screen. It uses this key pair to negotiate a secure SSL/TLS authenticated 
+				connection to your keyserver. This connection depends not only on your certificate 
+				and the Certificate Authority that issued your certificate,
+				but also on the Certificate Authority that issued your keyserver's certificate.
+
+				<p>Note: If the keyclient fails, you'll need to re-run it after the installer finishes.
+
+			<li>
+				<p>Next, your IIS Service will be started.
+
+				<p>[fixme: do we mention here that the filter is initialized and a new session key pair 
+				is generated?]
+		
+			<li>
+				<p>When the installer has completed, click Finish.
+
+				<p><img src="images/finish.jpg">
+
+		</ol>
+
+		<h4><a name="iis6">Web Service Extension Configuration (IIS 6.0)</a></h4>
+
+		<p>Installation on IIS 6.0 requires additional configuration to add and allow
+		a new Web Service Extension for Pubcookie. 
+
+		<ol>
+
+			<li>
+			<p>Using the IIS Manager, select Web Service Extensions and click 
+			"Add a new Web service extension..."
+
+			<p><img src="images/webservicesext.jpg">
+
+			<li>
+			<p>On the New Web Service Extension dialog, enter <tt>.pubcookie3</tt> for the Extension name,
+			click Add..., click Browse and browse to and then Open the <tt>System32\inetsrv\pubcookie\PubCookieFilter.dll</tt>,
+			click OK, then check the box to Set extension status to Allowed, and click OK.
+
+			<p><img src="images/addextdialog.jpg">
+
+			<li>
+			<p>The resulting Web Service Extension for Pubcookie will be added to the list.
+			The Status should be Allowed.
+			<p><img src="images/addedext.jpg">
+
+		</ol>
+
+		<h4><a name="review">Reviewing Pubcookie Installation</a></h4>
+
+		<p>A successful installation of Pubcookie includes the following items:</p>
+
+		<ul>
+
+			<li>
+			<p><b>ISAPI filter.</b> See IIS Master Properties &gt; Edit &gt; ISAPI Filters. Status 
+			should be up/green; priority should be Low.
+
+			<li>
+			<p><b>ISAPI extension.</b> See IIS Master Properties &gt; Edit &gt; Home Directory &gt;
+			Configuration... &gt; Application Mappings. A <tt>.pubcookie3</tt> Extension 
+			should be present with an Executable Path pointing to the PubcookieFilter DLL.
+
+			<li>
+			<p><b>Pubcookie MMC snap-in configuration tabs.</b> See Pubcookie Server Variables and/or Pubcookie
+			Directives tabs added to Properties dialogs opened in the IIS Manager.
+
+			<li>
+			<p><b>Pubcookie folder.</b> This folder contains the keyclient, DLL files, license, and keys folder.
+			See <tt>System32\inetsrv\Pubcookie</tt>.
+			<p><img src="images/pbcfolder.jpg">
+
+			<li>
+			<p><b>Pubcookie keys folder.</b> This folder contains your host key(s), granting certificate,
+			and a session key pair if you've created one on disk. See <tt>System32\inetsrv\Pubcookie\keys</tt>.
+
+			<p><img src="images/keysfolder.jpg">
+
+			<li>
+			<p><b>PubcookieFilter Windows registry key.</b> The primary registry key for Pubcookie is
+			<tt>System\CurrentControlSet\Services\PubcookieFilter</tt>.
+
+			<p><img src="images/registry.jpg">
+
+			<li>
+			<p><b>Event log sources.</b> The installer registers several event log sources for Pubcookie.
+			See the main Pubcookie key, plus one for each IIS Instance ID, under
+			<tt>System\CurrentControlSet\Services\EventLog\Application</tt>.
+
+			<li>
+			<p><b>Sample Web application.</b> A sample web application demonstrates how authentication
+			information is provided by the filter. See <tt>wwwroot\webapp</tt>.
+
+			<p><img src="images/webapp.jpg">
+
+			<li>
+			<p><b>Windows Installer package (Pubcookie.msi).</b> 
+
+			[fixme: why would one want to keep the installer around? perhaps for re-installs, uninstalls?]
+
+		</ul>
+
+		<h4><a name="config">Pubcookie Configuration Overview</a></h4>
+
+                <p>Pubcookie derives its behavior from configuration settings in the Windows registry.
+		Use the IIS Manager to view and manage these settings. They fall into two categories,
+		<i>Pubcookie Server Values</i> and <i>Pubcookie Directives</i>.
+
+		<p>Pubcookie Server Values apply configuration behaviors to Pubcookie itself.
+		They can be found under your master or web site properties. Click the Pubcookie
+		Server Values tab.
+
+		<p>Pubcookie Directives apply configuration behaviors to specific resources: web sites,
+		folders, even individual files. They can be found under the resource properties.
+		Click the Pubcookie Directives tab.
+
+		<h4><a name="auth">How to Configure Authentication</a></h4>
+
+		<p>Use the IIS Manager to apply Pubcookie authentication to a resource. For example,
+		if you installed the sample web application, follow these steps to view and modify
+		how its configured for authentication:
+
+		<ol>
+
+			<li>
+			<p>Browse to the Webapp in the IIS Manager and open its Properties.
+
+			<li>
+			<p>Select the Pubcookie Directives tab and choose the AuthType
+			directive from the drop-down menu. 
+
+			<li>
+			<p>To enable authentication, select the appropriate value. To disable authentication, select None.
+
+			<p><img src="images/mmcwebapp.jpg">
+
+			<p>Note: AuthType values are determined by the Authentication Flavor
+			Names entered during installation. They
+			correspond with the types (or, technically, <i>flavors</i>) of authentication provided
+			by your Pubcookie login server. Typically, just one flavor is 
+			supported, but some sites have two or more. The menu values are stored as 
+			Pubcookie Server Values.
+
+			<li>
+			<p>When you click Apply (or click OK, after making more than one change within the
+			Properties dialog), your configuration choices will be written to the appropriate
+			registry key.
+
+			<p><img src="images/registrywebapp.jpg">
+
+			<li>
+			<p>The filter reads the AuthType value on every request, so configuration changes 
+			should be reflected immediately. 
+
+		</ol>
+
+		<h4><a name="keyclient">Running Keyclient.exe</a></h4>
+
+		<p>The Pubcookie keyclient for Windows (<tt>System32\inetsrv\pubcookie\keyclient.exe</tt>) 
+		is used to securely obtain symmetric encryption keys for your server name(s). It uses the
+		SSPI/SChannel libraries to negotiate a SSL/TLS authenticated connection to the 
+		keyserver, using credentials and trusted certificate authority (CA) information
+		from the Windows certificate store. Most likely it will use the same Server (SSL)
+		Certificate used by IIS for secure HTTPS communications.
+
+		<p>The keyclient supports the following command-line options:
+
+		<ul>
+			<li>
+			<p><tt>-H &lt;hostname&gt;</tt> (Client hostname. Used to search certificate store
+			for a certificate with a matching SubjectAltName or Subject/CN.)
+
+			<li>
+			<p><tt>-K &lt;location&gt;</tt> (Key Server URL; defaults to Keymgt_URI registry setting.)
+
+			<li>
+			<p><tt>-d</tt> (Download current key; without this option it will obtain a new key.)
+
+			<li>
+			<p><tt>-G</tt> (Obtain your site's Pubcookie granting certificate.)
+
+			<li>
+			<p><tt>-I</tt> (Run in simplified installer mode. )
+
+		</ul>
+
+		<p>For example, to request a host key for <i>appserver.exampled.edu</i> from
+		<i>login.example.edu</i>, you would use the <tt>-H</tt> and <tt>-K</tt> options.
+
+<pre>&gt; cd C:\WINNT\system32\inetsrv\pubcookie
+&gt; keyclient.exe -H appserver.example.edu -K https://login.example.edu:2222 </pre>
+
+		<p>Note: The keyclient skips over expired certificates in its search for one
+		that matches the specified (<tt>-H</tt>) hostname.
+
+		<p>Note: When run from the command prompt, the keyclient will allow you to
+		pick which certificate to use if it finds more than one that matches.
+
+		<h4><a name="clusters">Clustered Host Configuration</a></h4>
+
+		<p>If the same server name is hosted on several machines, you have a <i>clustered host configuration</i>
+		and will need to synchronize your installation and configuration among the cluster members. In
+		particular, you need to make sure each member has a copy of the same host key and is using
+		the same Pubcookie session key pair.
+
+		<ol>
+
+			<li>
+			<p>To synchronize the host key, when you run the installer on the first host, set
+			the installer's keyclient behavior to obtain a new key. On subsequent hosts, set it to
+			retrieve the old key. Another method is to obtain a new host key on the very last host and then
+			copy it to the previous hosts. 
+
+			<li>
+			<p>To ensure each cluster member has the same session key pair, put the same
+                	key pair on each host, on disk, in the right location, and the filter will read it 
+	                upon startup. The file names are
+			<tt>System32\inetsrv\Pubcookie\keys\pubcookie_session.cert</tt> and
+			<tt>System32\inetsrv\Pubcookie\keys\pubcookie_session.key</tt>, respectively.
+
+			<p>Note: any appropriately named key pair in PEM format will suffice for the session key pair. 
+			The difficulty on Windows is generating a key pair. If you can find a system 
+			that has OpenSSL, you can generate a new key pair with:
+
+<pre>$ openssl req -new -x509 -out pubcookie_session.cert \
+-newkey rsa:1024 -nodes -keyout pubcookie_session.key</pre>
+
+			<p>[fixme: there must be an easier way using Windows crypto API commands.]
+
+			<li>
+			<p>As a result of this effort, each host will have the same contents in its Pubcookie keys folder.</p>
+			<p><img src="images/clusterkeysfolder.jpg">
+		</ol>
+
+
+		<p>Note: If you don't sychronize clustered hosts, session cookies set by one cluster member will not be 
+		readable by the other cluster members, resulting in <i>Can't unbundle session cookie</i> error
+		messages in the Event log.
+
+		<h4><a name="vhosts">Multiple Web Site Configuration</a></h4>
+
+		<p>If a machine hosts multiple web sites (server names), additional configuration may
+		be required.
+
+		<ol>
+			<li>
+			<p>(Required) Since each web site represents a differnet server name, each
+			web site must obtain a host key from the keyserver. Install Pubcookie
+			for one site. Then <a href="#keyclient">run the keyclient</a> again (using
+			the <tt>-H hostname</tt> option) for each additional web site. Reset IIS
+			when you're done.
+
+			<li>
+			<p>(Recommended) By default the filter reads all configuration settings 
+			starting from the main PubcookieFilter registry key. If two different web sites
+			have different configuration objectives, then you may run into conflicts. 
+			For example, one site might have authentication enabled at the root level,
+			while a second site might enable it only for a subfolder. You can't
+			do both, since the AuthType settings will conflict. Therefore, you should
+			separate configuration such that each web site has its own location for
+			configuration settings:
+
+			<ol>
+
+			<li>
+			<p>Using the IIS Manager, open the Properties for each web site.
+
+			<li>
+			<p>Select the Pubcookie Server Values tab and choose the WebVarLocation variable 
+			from the drop-down menu.
+
+			<li>
+			<p>Enter a new registry location for the WebVarLocation. You might base the name on the web site (e.g.
+                        <tt>System\CurrentControlSet\Services\PubcookieFilter\DefaultWebSite</tt>).
+
+			<p><img src="images/mmcwebvarlocation.jpg">
+
+			<li>
+			<p>Notice that your web site's IIS Instance ID maps to the WebVarLocation. You can see
+			this in the Window registry.
+
+			<p><img src="images/registrywebvarlocation.jpg">
+
+			<li>
+			<p>Once a WebVarLocation has been defined for a site, all <i>new</i> configuration changes
+			will be represented under the new registry location.
+
+			</ol>
+
+		</ol>
+
+		<h4><a name="msiexec">Pubcookie Installer Msiexec Options</a></h4>
+
+		<p>The Windows Installer package for Pubcookie supports several command-line options
+		that can be used with the msiexec command.
+
+		<ul>
+			<li>
+			<p><tt>LOGINURI</tt> (Login Server URL)
+
+			<li>
+			<p><tt>KEYMGTURI</tt> (Key Server URL)
+
+			<li>
+			<p><tt>AUTHID1-3</tt> (Authentication Flavor Names; Use "" for unused flavors.)
+
+			<li>
+			<p><tt>RUNKEYCLIENT</tt> (Keyclient Behavior. 0=Do not run keyclient; 1=Obtain new key (default); 2=Retrieve old key)
+
+		</ul>
+
+		<p>For example, you might run it at the command prompt, first changing folders to wherever
+		you saved Pubcookie.msi.
+
+<pre>&gt; cd C:\WINNT\system32\inetsrv\pubcookie
+&gt; msiexec /i pubcookie.msi \
+    LOGINURI=https://login.example.edu \
+    KEYMGTURI=https://login.example.edu:2222 \
+    AUTHID1=EGNETID AUTHID2="" AUTHID3="" \
+    RUNKEYCLIENT=1</pre>
+
+		<h4><a name="upgrade">Upgrading</a></h4>
+
+		<p>[fixme: This is draft text. We need more real-world experience to confirm that 
+		this section is accurate.]
+
+		<p>The Windows installer package requires you to uninstall previous versions prior
+		to installing a newer version.
+
+		<ol>
+		<li>
+		<p>Run the installer for the version of Pubcookie currently installed on your
+		system, e.g. if you're using version 3.1.1 run the Pubcookie 3.1.1 installer.
+
+		<li>
+		<p>Choose the Remove option from the Program Maintenance screen, click Next, and
+		click Remove. This will uninstall the current version while perserving your 
+		current Pubcookie keys folder and your current configuration settings for alternate 
+		WebVarLocations and web resources (i.e. web instances, folders and files).
+
+		<p>Note: uninstalling Pubcookie removes the root level configuration settings for the 
+		filter (i.e. Pubcookie Server Variables). These settings will be added back, based
+		on the Site Information you provide, when you install the newer version.
+
+		<li>
+		<p>Once you have uninstalled the current version of Pubcookie, run the new installer.
+		It will install Pubcookie as if from scratch, perserving your current Pubcookie keys
+		folder and configuration settings.
+
+		<p>Note: Enter the same Authentication Flavor Names to ensure that current AuthType
+		configurations work the same as before. If you change your Authentication Flavor
+		Names, resources that currently require authentication may not be protected
+		anymore.
+
+		<p>Note: The safest keyclient behavior to choose during an upgrade is to not run the keyclient.
+		This leaves your keys folder unchanged. Retrieving the existing key is a safe choice too.
+
+		<p>Note: The installer will remove old versions of the filter from
+		the IIS metabase, but this generally isn't as effective as uninstalling things first.
+
+		</ol>
+
+		<h4><a name="uninstall">Uninstalling Pubcookie</a></h4>
+
+		<p>[fixme: TBD. need to document effects to each installed item.]
+
+		<h4><a name="problems">Known Problems</a></h4>
+
+		<p>Known problems with the Windows components in Pubcookie 3.3:</p>
+
+		<ul>
+			<li>
+			<p><b>Windows Installer errors.</b> Pubcookie.msi is a rudimentary Windows installer package, so
+                        you might run into some quirks. It isn't understood why it sometimes doesn't proceed beyond the
+                        Welcome screen and says <i>"The wizard was interrupted before Pubcookie3 could be completely
+                        installed."</i> Be persistent here. Re-running the installer often enables it to proceed. (If
+                        you understand why, let us know.) The installer can also fail due to other reasons. If a web site
+                        is not defined and running for IIS Instance ID 1 (often the Default Web site) it will say: 
+                        <i>"Could not find a web site. Make sure that a web site has been defined in the Computer 
+                        Management MMC snap-in."</i> In IIS 6.0, if the Default application pool isn't started, the
+                        installer might say <i>"The wizard was interrupted before Pubcookie 3 could be completely
+                        installed..."</i> and roll back the installation.</p>
+
+			<li>
+			<p><b>Memory leaks.</b> Memory leaks have been observed on systems using the filter, causing the
+			inetinfo.exe (IIS 5) and w3wp.exe (IIS 6) processes to grow over time. This can be addressed on
+			heavily loaded systems by recycling sites or resetting IIS nightly, in which case it is 
+			recommended that you store your Pubcookie session key pair on disk (see <a
+			href="#clusters">clustered host	configuration</a>) to preserve sessions between restarts.</p>
+
+			<li>
+			<p><b>IIS 6.0 Idle Timeout causes session errors.</b> Uncheck idle timeouts to prevent session errors.
+                        The default inactivity timeout in IIS 6 is 20 minutes for each web application pool (see Properties > 
+                        Performance > Idle timeout). When this times out, it's like resetting IIS, which causes the filter 
+			to reinitialize and generate a new session key (if you don't have one on disk). The new session key can't
+                        be used to read old session cookies, so users who establish a session before the
+                        timeout/reinitialization receive error messages. They manifest themselves as <i>Can't unbundle session
+                        cookie</i> messages in the Event Log.</p>
+
+			<li>
+			<p><b>New Event Log sources not added for new Web Sites.</b> If a new Web Site is added after Pubcookie has
+                        been installed, a new Event Log source may need to be registered manually.</p>
+
+			<li>
+			<p><b>MMC adds empty registry keys.</b> The MMC extension adds empty, harmless, but nevertheless
+                        extraneous registry keys when you open the Pubcookie Directives tab.</p>
+
+			<li>
+			<p><b>MMC can't set inherited settings.</b> The MMC extension won't allow you to override inherited values with
+                        the same value that's being inherited.</p>
+
+			<li>
+			<p><b>Windows Event Viewer crashes.</b> Past versions of the pbc_messages DLL are known to crash the Event Viewer
+                        on some systems when viewing Pubcookie events. This <i>should</i> be fixed in version 3.3, so please report it if it still happens.</p>
+
+			<li>
+			<p><b>Requests to root level resources require a trailing slash.</b> Requests to folders and virtual
+                        directories at the root level of a site require a trailing slash. Without it, the filter uses
+                        the default configuration and doesn't pick up the settings specific to the folder or virtual
+                        directory. Until this is fixed in the filter, links and requests should always include the trailing slash.
+                        (But that's good form anyway.)</p>
+
+			<li>
+			<p><b>Filter works okay, but status not updating.</b> With IIS 6, the "Network Service" account needs read 
+                        permission to the Pubcookie folder to update the ISAPI filter status (to status up/green). This is the account the
+                        filter runs under as per the DefaultAppPool Identity setting.</p>
+		</ul>
+
+		<h4><a name="certs">Appendix A: Windows Certificate Store</a></h4>
+
+		<p>The Windows certificate store holds the SSL key pairs used by IIS and the
+		Pubcookie keyclient. You can use the MMC Certificate snap-in to view and manage
+		these certificates.
+
+		<ol>
+			<li>
+			<p>Open the MMC console by clicking Start > Run
+
+			<li>
+			<p>Type mmc and click OK.
+
+			<li>
+			<p>On the Console menu, click Add/Remove Snap-in.
+
+			<li>
+			<p>Click Add > Certificates. You'll be asked to select from the
+			current user account, service account, or the computer account.
+
+			<li>
+			<p>Choose the Computer account, which is where the relevant certificates
+			are stored.
+
+			<li>
+			<p>Click Local computer, and then click OK.
+
+			<li>
+			<p>Use the MMC to review the certicates in the Personal container.
+			Remove any certificates that do not belong.
+
+		</ol>
+
+		<hr>
+		<p>
+			Copyright 1999-2007, University of Washington. All rights reserved.<br>
+			See doc/LICENSE.txt for terms of use.
+		</p>
+	</body>
+</html>

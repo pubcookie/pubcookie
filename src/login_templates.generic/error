@@ -1,0 +1,27 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <link rel="stylesheet" type="text/css" href="media/pubcookie.css" />
+    <title>Example University Login</title>
+    %refresh%
+  </head>
+  <body>
+    <div id="mainwindow" class="status">
+      <div id="title">
+        Example University Login Error
+      </div>
+      <div id="mainarea">
+        <p class="error">
+          The login service has encountered an error. Please report the
+          following:<br />
+          <b>%flavor%</b>: %error%
+        </p>
+      </div>
+      <div id="copyright">
+        Copyright &copy; 2006 by Example University
+      </div>
+    </div>
+  </body>
+</html>

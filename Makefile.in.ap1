@@ -1,0 +1,71 @@
+# -*- make -*-
+#
+# Makefile for apache 1.3 dso module build
+#
+# @configure_input@
+# 
+# $Id: Makefile.in.ap1,v 1.4 2004/05/03 21:50:24 willey Exp $
+
+prefix=@prefix@
+srcdir=@srcdir@
+builddir=@builddir@
+
+
+CC=@CC@
+
+RM=@RM@
+SED=@SED@
+FORCE_RM=$(RM) -f
+
+APXS=@APXS@
+AP_INCLUDE=-I`$(APXS) -q INCLUDEDIR`
+AP_CFLAGS=`$(APXS) -q CFLAGS` `$(APXS) -q CFLAGS_SHLIB`
+
+MOD_DEFINES=-DAPACHE -DAPACHE1_3 -DHAVE_CONFIG_H
+
+LIBS=@LIBS@
+CPPFLAGS=$(AP_INCLUDE) @CPPFLAGS@ @DEFS@ $(MOD_DEFINES) -I.
+CFLAGS=@CFLAGS@ $(CPPFLAGS) $(AP_CFLAGS)
+LDFLAGS=@AIX_LDFLAGS@ @LDFLAGS@ @LIBS@
+
+OBJ=@MOD_OBJ@
+
+HDR=@MOD_HDR@
+
+VERSION = `echo @PACKAGE_VERSION@ | $(SED) "s/ /-/g" `
+
+BASENAME = @PACKAGE_TARNAME@
+DISTNAME = $(BASENAME)-$(VERSION)
+
+.c.o:
+	$(CC) -c $(CFLAGS) $< -o $@
+
+all: apache_module @need_slib_clean@
+
+install: install_apache
+
+apache_module: a_ver mod_pubcookie.so 
+
+mod_pubcookie.so: $(OBJ) $(HDR)
+	$(APXS) -c -o mod_pubcookie.so $(LDFLAGS) $(CPPFLAGS) $(OBJ)
+
+install_apache: apache_module
+	$(APXS) -i -A -n pubcookie mod_pubcookie.so
+
+need_slib_clean:
+	@echo ""
+	@echo "Before installing the module:"
+	@echo " - shutdown any running apache server"
+	@echo " - run 'slibclean'"
+	@echo ""
+
+
+# Cleanup targets
+
+clean::
+	-$(FORCE_RM) *.o *.lo *.la *.slo
+
+
+a_ver:
+	@echo Making $(DISTNAME) apache module;
+

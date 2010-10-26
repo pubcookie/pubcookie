@@ -1,0 +1,23 @@
+        </table>
+
+        <p class="message">
+          <strong>Note:</strong> Now that you have identified yourself
+          to the <strong>weblogin service</strong>, you can log in to other 
+          Example University websites without having to re-enter your id 
+          and password.
+        </p>
+
+        <p class="warning">
+          <strong>Warning:</strong> To protect your privacy and prevent
+          unauthorized use, <strong>completely exit your web browser</strong> 
+          when you are finished browsing. If you need help, 
+          review <a href="http://www.acme.edu/docs/weblogin/logout.html">how to 
+          log out</a>.
+        </p>
+      </div>
+      <div id="copyright">
+        Copyright &copy; 2006 by Example University
+      </div>
+    </div>
+  </body>
+</html>

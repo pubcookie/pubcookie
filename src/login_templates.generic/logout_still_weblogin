@@ -1,0 +1,6 @@
+<p class="warning">
+  <img src="media/icon-excl.gif" align="absmiddle" alt="" height="35" width="35"/>
+  You are still logged in to the <b>Example University Login Service</b>
+  as <b>%contents%</b>.
+</p>
+

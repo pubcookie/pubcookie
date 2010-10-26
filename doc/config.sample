@@ -1,0 +1,8 @@
+# ssl config
+ssl_key_file: /etc/httpd/conf/ssl.key/server.key
+ssl_cert_file: /etc/httpd/conf/ssl.crt/server.crt
+
+# keyclient-specific config
+keymgt_uri: https://weblogin.example.edu:2222
+ssl_ca_file: /etc/httpd/conf/ssl.crt/ca-bundle.crt
+

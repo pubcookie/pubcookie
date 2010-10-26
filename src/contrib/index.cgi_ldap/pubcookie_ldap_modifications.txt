@@ -1,0 +1,48 @@
+In testing the installation of the Pubcookie IIS ISAPI filter,
+PubcookieFilter, I just realized that there's an easier way to plug
+in LDAP as the user authentication backend in the Login server.
+Here's a brief how:
+
+  1. Replace the original index.cgi_krb.c file in pubcookie_login-1.22
+     with the index.cgi_ldap.c from my previous pubcookie-uh-ldap.zip
+     file.  So, inside index.cgi_krb.c it has the index.cgi_ldap.c
+     code.
+
+  2. Rename auth_ldap function to auth_krb in the new index.cgi_krb.c
+     in step 1.
+
+  3. Compile and install the Login server.
+
+This should minimize the changes you'd need to do index.cgi.c since
+you can take your previously modified installation of the Pubcookie
+distribution that you've customized for your site just do the above
+steps.  Performing the above steps effectively changes the UWNetID
+authentication method so that it use LDAP.  What I did was add a new
+authentication type which let me retain the Kerberos authentication
+identified as UWNetID.
+
+Hope this helps a bit more,
+Russ
+
+On Thu, 11 Oct 2001, Russell Tokuyama wrote:
+
+>
+> On Tue, 2 Oct 2001, Dan Jones wrote:
+>
+> > In the WebISO conference call this afternoon you mentioned replacing the
+> > kerberos authentication with a LDAP bind.  Is this a modification you
+> > are able to share.  Thanks in advance - Dan
+>
+> I've attached a zip file, pubcookie-uh-ldap.zip, that includes a short
+> document, login-server-ldap.txt, describing what changes where made to
+> employ LDAP for user authentication.  Please note however that LDAP over
+> LDAP should be used to protect the user's password as it is sent from
+> the Login server to the LDAP server.
+
+-----------------------------------------------------------mace-webiso-+
+For list utilities, archives, subscribe, unsubscribe, etc. please visit the
+ListProc web interface at 
+
+    http://archives.internet2.edu/
+
+-----------------------------------------------------------mace-webiso--

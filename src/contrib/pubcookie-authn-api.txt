@@ -1,0 +1,77 @@
+
+Pubcookie Authentication API -- Adding another backend method of
+athenticating users.
+
+The public distribution of Pubcookie by the University of Washington
+currently supports two methods of authentication, Kerberos and SecurID by
+RSA Security Inc.  Other backend authentication mechanisms can be added to
+Pubcookie by adding the appropriate code and supporting infrastructure for
+each additional type.  While Pubcookie does not have an easy way to plug
+in additional authentication backends, there are two strategies that can
+be used depending on local constraints.
+
+An authentication or credential type is used to identify the specific
+method used to authenticate the user.  For example, UWNetID and SecurID
+are the two supported in the public distribution of Pubcookie. In fact,
+SecurID and Kerberos are used in tandem behind the scenes of the SecurID
+credential type.  The code and the documentation tend to use
+authentication type and credential type interchangably.  To add an new
+authentication backend to support a new credential type, one would either
+add code to handle the new credential type along with the supporting
+backend interface or replace an existing one's backend. Of course, the
+easier way to go is the latter.
+
+The backend interface has simple interface that consists of a single
+function that returns a null if the user is authenticated or an error
+message if not.  The UWNetID backend uses Kerberos and has this method
+signature in index.cgi_krb.c:
+
+  char *auth_kdc(const char *username, const char *password)
+
+while the SecurID backend has this method signature in
+index.cgi_securid.c:
+
+  char *auth_securid(char *user, char *sid, int next, login_rec *l)
+
+The important thing to note here is that the function called can accept
+any set of parameters required by the backend system as needed to
+authenticate the user and all that needs to be returned is null or an
+error message.  The rest of the login server code in index.cgi.c handles
+the actions to indicate an authenticated user to other cooperating
+systems.  The login server function is handled by the index.cgi program
+which is linked with the index.cgi_krb and index.cgi_securid code.
+
+To replace an existing authentication backend with a new one, one would
+simply replace the function body of auth_kdc or auth_securid. For example,
+if we wanted to use an LDAP directory server to authenticate users, we
+could replace auth_kdc's internals with the appropriate code to
+authenticate the user against an LDAP server since username and password
+would be the two pieces of data that would be used.  Nothing else would
+need to be changed to utilize the new backend authentication.  However, a
+bit of cognitive dissonance may occur when troubleshooting operational
+problems.
+
+With more code changes, it is possible to add a new authentication 
+(credential) type that can expand the choices.  For example, if one would
+like to be able to use UWNetID, SecurID, and LDAP, a new credential type
+would need to be defined in pbc_config.h like so:
+
+  #define PBC_LDAP_AUTHTYPE   "ldap"
+  #define PBC_CREDS_LDAP      '4'
+
+The supporting code to recognize and handle things appropriately must be
+added to both the login server and the Pubcookie Apache module,
+mod_pubcookie.  Unfortunately, things are spread out in various places for
+the login server.  Additionally, the function to handle the LDAP backend
+authentication can be added in a file called index.cgi_ldap.c following
+the existing convention for Kerberos and SecurID.
+
+As can be seen, replacing an existing authentication backend is easier
+than adding a new authentication type that can be recognized. It appears
+that with some redesign Pubcookie could be set up to be more pluggable.  
+Two key things need to be accounted for; the pieces of data required for
+the backend authentication and the Web form that would be required to
+gather those pieces of data from the user.
+
+Russell Tokuyama
+russ@hawaii.edu

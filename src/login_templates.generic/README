@@ -1,0 +1,52 @@
+*** some files are snipits of html the login program stiches together
+*** editing them with a tool will add <html> and <body> tags that
+*** will conflict (eventually we want to fix this)
+
+login_part1
+login_part2
+   These files taken together are the login screen the user sees.
+   There are two %s in them.  Those %s are to print out the status
+   info (like "password incorrect, try again").  Between part1 and
+   part2 the login program sticks in a pile of hidden fields so it can
+   keep track of its private info about this request.  So part1 needs
+   to end in the form that gets submited on login.  part2 is the rest
+   of the file
+
+
+nonpost_redirect
+   This file is used when a login is successful and we need to redirect
+   back to the client web server.  
+
+notok_part1
+notok_part2
+   If the login program is giving up, these files are used for error
+   messages.  You shouldn't see this normally, as normnal errors
+   should return to the login page.
+   xxx what's a good way of getting pubcookie to display these pages?
+
+notok_need_ssl
+   displayed when the login.cgi is invoked from a non-protected
+   connection
+
+logout_postscript_still_weblogin
+logout_still_weblogin
+logout_time_remaining
+   xxx
+
+status_part1
+status_part2
+   xxx
+
+error
+   displayed when the login flavor has decided that not only has this
+   authentication failed, but further authentications are extremely
+   likely to fail. you might want to include a "try again" link on
+   this page, but might also want to instruct users to call for more
+   information.
+
+copyright
+   Your copyright string.  currently only used on redirect with POST page
+logo
+   html that includes your logo.  currently only used on redirect with POST page
+
+$Id: README,v 1.6 2004/07/29 06:24:19 willey Exp $

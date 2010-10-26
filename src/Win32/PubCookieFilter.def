@@ -1,0 +1,10 @@
+LIBRARY PubCookieFilter
+
+EXPORTS
+   HttpFilterProc
+   GetFilterVersion
+   TerminateFilter
+   GetExtensionVersion
+   HttpExtensionProc
+   TerminateExtension
+   DllMain

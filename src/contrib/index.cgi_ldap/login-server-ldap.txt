@@ -1,0 +1,130 @@
+----------------------------------------------------------------------
+File:    pubcookie-ldap.txt
+Descr:   Modifcations made to the Pubcookie Login server and
+         Mod_pubcookie code to enable the use of LDAP for user
+         authentication.
+By:      Russell Tokuyama
+Date:    10/11/01
+Mod:     
+----------------------------------------------------------------------
+  1. Overview
+
+     The Pubcookie distribution is set up to use Kerberos or a
+     combination of Kerberos and SecurID (from RSA Security). The
+     University of Hawaii (UH) does not use Kerberos for user
+     authentication.  So we modified the source code for the Pubcookie
+     Login server and the Mod_pubcookie Apache module to use LDAP to
+     perform user authentication behind the scenes.
+
+     This document covers modifications made to the Login server
+     (pubcookie_login-1.22) and Mod_pubcookie (mod_pubcookie-1.55) in
+     the Pubcookie distribution.
+
+  2. Site-specific modifications
+
+     As distributed, the Login server and Mod_pubcookie are set up for
+     the University of Washington.  Therefore, some site-specific
+     modifications are necessary.  They occur wherever University of
+     Washington-specific information is sent in the HTML responses.
+     These are typically isolated to index.cgi.h and pbc_config.h.
+
+  3. LDAP authentication modifications
+
+     The modifications made by UH were done under RedHat Linux 7.1.
+
+     To use LDAP, you'll need to change the following files for the
+     Login server (pubcookie_login-1.22):
+
+       pbc_config.h
+       index.cgi.c
+       index.cgi.h
+
+     and add:
+
+       index.cgi_ldap.c
+
+     You'll also need to change the following files for the
+     Mod_pubcookie module:
+
+       pbc_config.h
+       mod_pubcookie.c
+
+     NOTE: pbc_config.h is the same file for both the Login server
+           and the Mod_pubcookie module.
+
+     The key changes to enable LDAP for user authentication are:
+       a. Add a new authentication type, e.g., UHNetID, to pbc_config.h.
+
+           #define PBC_UHNETID_AUTHTYPE "uhnetid"
+           #define PBC_CREDS_UHNETID '4'
+
+       b. Add code to index.cgi.c to recognize and handle the new
+          authentication type.  A new function, check_login_uhnetid,
+          is also added to call a function, auth_ldap, in a new
+          module, index.cgi_ldap.c to perform the user authentication
+          using LDAP.
+
+       c. Add a new module to handle the authentication type, e.g.,
+          index.cgi_ldap.c.  This module has only one function,
+          auth_ldap, that handles all the interaction with LDAP
+          directory server.  The site specific details are localized
+          in the module.  These specifics are:
+
+          i. LDAP server host name
+         ii. LDAP server port number
+        iii. LDAP search base
+         iv. LDAP attribute used to hold the username or net ID
+
+          index.cgi_ldap.c, which conforms to the way the Kerberos
+          (index.cgi_krb.c) and the SecurID (index.cgi_securid.c)
+          modules behave.
+
+          NOTE: The LDAP modifications assume that users can be
+                looked up anonymously in the directory.  If this
+                not the case additional modifications are required
+                for index.cgi_ldap.c.
+
+       d. Add a function declaration for auth_ldap in index.cgi.h.
+
+       e. Add the new module to the Makefile.
+
+       f. Copy the pbc_config.h file from the Login server source
+          directory to the Mod_pubcookie source directory before
+          building Mod_pubcookie.
+
+       g. Add code to the pubcookie_user function in mod_pubcookie.c
+          to check for the new auththentication type and set the
+          appropriate credentials code in the directory configuration
+          data.
+
+  4. Applying the modifications
+
+     A copy of all of the files including the originals in the
+     distribution are in a zip file called pubcookie-uh-ldap.zip.
+
+     You will need to modify index.cgi.h to customize the HTML pages
+     sent by the Login server for your particular site.
+
+     You need to sort out problems and differences with the library
+     files and their location.  This involves changing the
+     Makefile.index.cgi.  In some cases, you may need to add header
+     files (#include in the C source) for your specific OS.
+
+  5. Security issues
+
+     The second LDAP bind as the user with their password should be
+     done using LDAP over SSL.  This is not currently done in
+     modifications that were made.  It is strongly suggested that this
+     be done.
+
+  5. Copyrights and disclaimers
+
+     You are free to use the source code modifications but can't claim
+     you wrote them.  If you do decide to use them, you do so at your
+     own risk and responsibility.  Anything bad that happens is not
+     the fault of the University of Hawaii nor the author.  The
+     University of Hawaii gratefully recognizes the work and
+     contribution of the University of Washington in the original
+     distribution of Pubcookie it has modified.
+
+----------------------------------------------------------------------

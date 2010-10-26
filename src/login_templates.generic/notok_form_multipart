@@ -1,0 +1,4 @@
+<p class="error">
+  The resource you requested requires "multipart/form-data" 
+  capabilities not supported by this Pubcookie login service. 
+</p>

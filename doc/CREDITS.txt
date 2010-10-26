@@ -1,0 +1,77 @@
+   Pubcookie Credits
+
+   Pubcookie would not exist without the commitment and support of the
+   following developers, contributors, sponsors, and related software
+   projects.
+
+   Core Developers:
+     * Jim Blankenship      University of Washington
+     * Ryan Campell         University of Washington (former)
+     * Rob Christ           University of Washington (former)
+     * Jeff Eaton           Carnegie Mellon University
+     * Jim Fox              University of Washington
+     * Larry Greenfield     Carnegie Mellon University (former)
+     * Jon Miner            University of Wisconsin
+     * Ryan Muldoon         University of Wisconsin (former)
+     * Steve Suh            University of Washington (former)
+     * Stephen Willey       University of Washington
+
+   Core Contributors:
+     * Nathan Dors          University of Washington
+     * Frank Fugimoto       University of Washington
+     * Scott Fullerton      University of Wisconsin
+     * RL "Bob" Morgan      University of Washington
+     * Lori Stevens         University of Washington
+     * Russell Tokuyama     University of Hawaii
+     * Pascal Wallenius     University of Washington (former)
+
+   Other Contributors:
+     * Bradford Barrett     University of Florida
+     * Maurizio Marini      Cost Srl, Milan, Italy
+     * Christopher Maxwell
+     * Gary Mills           University of Manitoba, Canada
+     * Robert Knight        Princeton University
+     * Bradley Schwoerer    University of Wisconsin-Madison
+     * Steve Losen          University of Virginia 
+     * Klas Lindfors        Stockholm University
+     * Allan E. Johannesen  Worcester Polytechnic Institute
+     * David Houlder        Australian National University
+     * Benjamin Armintor    University of Texas-Austin
+     * Doug DeJulio         Carnegie Mellon University
+     * Konstantin Ryabitsev McGill University
+     * Chris Ries           Carnegie Mellon University
+
+   Sponsors:
+     * The Andrew W. Mellon Foundation
+     * Internet2
+     * University of Washington
+
+   Projects:
+     * Apache
+     * Bugzilla
+     * cgic (*)
+     * CVS
+     * FastCGI
+     * GNU autoconf
+     * MIT Kerberos
+     * Microsoft IIS
+     * mod_ssl
+     * NSF Middleware Initiative (**)
+     * OpenLDAP
+     * Sun ONE Directory SDK
+     * OpenSSL
+     * ViewCVS
+
+   (*) cgic, copyright 1996 by Thomas Boutell. Permission is granted to
+   use cgic in any application, commercial or noncommercial, at no cost.
+   HOWEVER, this copyright paragraph must appear on a "credits" page
+   accessible in the public online and offline documentation of the
+   program. Modified versions of the cgic library should not be
+   distributed without the attachment of a clear statement regarding the
+   author of the modifications, and this notice may in no case be
+   removed. Modifications may also be submitted to the author for
+   inclusion in the main cgic distribution.
+
+   (**) Any opinions, findings and conclusions or recommendations
+   expressed in this material are those of the author(s) and do not
+   necessarily reflect the views of the National Science Foundation (NSF).

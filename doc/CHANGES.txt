@@ -1,0 +1,914 @@
+Changes with 3.3.4:
+
+*) Security fix to ISAPI filter for stack buffer overflow. (Reported by
+   Chris Ries, Carnegie Mellon University.)
+
+*) Fixed bug in the login cgi's supporting cgic library that caused
+   granting request parsing problems (for referring URLs with no
+   "name=value" args), which particularly affect session reauth.
+   (Bug diagnosed and reported by Todd Ross.)
+
+*) Fixed bug in login cgi allocation of space to altconfig; we were
+   off by 1. (Discovered and fixed by Bradley Schwoerer and Jon Miner.)
+
+*) Fixed bug in Apache module handling of angle brackets in the argument
+   names in POST data. (Bug reported by Trevor Bortins and Jon Hauser.)
+
+*) Fixed ISAPI filter meta-refresh redirect that enforces https to
+   re-encode query string arguments prior to redirect so that values
+   aren't truncated. (Bug reported by William Jordan.)
+
+*) Fixed bug in keyserver that crashed it when using the login_servers 
+   config file option. (Bug report and patch provided by Pascal Lalonde.)
+
+*) Added support for 4096 bit private keys to login cgi.
+
+*) Modified login cgi to log user's IP address on Redirect log line.
+
+Changes with 3.3.3:
+
+*) Fixed Apache module not to handle /favicon.ico requests when
+   Pubcookie authentication isn't enabled. (A problem originally
+   reported by Matt Petro, University of Wisconsin - Madison.)
+
+*) Modified Apache module: on internal redirects, forward our headers
+   to the new request record; with POST login method, to preserve and
+   restore query string as well as post data; and added some type casts
+   to avoid compiler warnings.
+
+*) Modified ISAPI filter to log expired granting cookies as errors.
+
+Changes with 3.3.2d:
+
+*) Fixed login cgi handling of post data names and values during
+   redirect back to the application server in the GET login method.
+
+*) Fixed bug in Apache module's verify_url function causing some
+   chars such as colons to be converted to other chars during login.
+
+Changes with 3.3.2c:
+
+*) Rebuilt PubcookieFilter DLL using OpenSSL 0.9.7f libraries to fix
+   crypto issues with multi-threading on multi-CPU IIS servers.
+
+*) Fixed bug in use of output filters introduced in version 3.3.2,
+   in Apache 2.0.49 and higher, whereby headers set in the 'filter'
+   mode are dropped when the module creates response content, logouts,
+   errors, etc.
+
+*) Fixed strlcpy.c bug. Pubcookie's implementation of strlcpy.c had
+   a null termination bug when the source string (length - 1) exactly
+   fits the destination string buffer.
+
+*) Fixed Javascript call in login cgi when posting data back to the
+   application server. Added '()' to document.query.submit.
+
+Changes with 3.3.2b:
+
+*) Modified Apache module to handle '+' chars in base-64-encoded path.
+
+*) Modified ISAPI filter to match Apache module's handling of chars
+   in the path and query strings: base64 encode and url-encode '+' 
+   characters. This fixes possible truncations of uri's sent through
+   the login process.
+
+*) Modified ISAPI filter to verify that the login server sends a   
+   non-empty userid in the granting reply unless No_Prompt is on.
+
+Changes with 3.3.2a:
+
+*) Modified Apache module to verify that the login server sends a
+   non-empty userid in the granting reply unless PubcookieNoPrompt
+   is on. 
+
+*) Modifed Apache module to url-encode '+' chars after base64-encoding
+   query strings. This fixes possible truncations of uri's sent through
+   the login process.
+
+*) Fixed out of place "char *datestr" declaration in Apache module. 
+
+Changes with 3.3.2:
+
+*) No source code changes since 3.3.2-beta2. Minor doc updates.
+
+Changes with 3.3.2 Beta 2:
+
+*) Fixed Apache module to check for a valid request record in 
+   do_output_filter function.
+
+*) Fixed bug in login cgi to avoid a possible loop condition with
+   unexpired PBC_CLEAR_COOKIE cookies.
+
+Changes with 3.3.2 Beta 1:
+
+*) Modified Apache module for Apache 2.0.49 and above to set output
+   headers in an output filter. This provides better compatibility with
+   Apache 2.2 and other modules, and in particular with mod_proxy_ajp.
+
+*) Added LDAPS support to LDAP verifier. Enable it with new ldap_tls
+   config file variable. Configure TLS authentication with new
+   ldap_key_file, ldap_cert_file, and ldap_ca_file variables.
+
+*) Added PubcookieNoCleanCreds directive to Apache module. Allows an
+   application to handle flavor_getcred credential cleanup.
+
+*) Removed obsolete herror from Unix keyclient.c. Should fix build
+   problems reported for Solaris.
+
+Changes with 3.3.1:
+
+*) Fixed session reauthentication messaging so that the module and
+   filter can verify that the login cgi handled a reauth request.
+
+*) Modified Apache module to base64 encode the path when using the POST
+   login method. This allows ampersands and other odd chars in the path.
+
+*) Fixed login cgi not to use the login_reauth message if the user
+   hasn't authenticated to any apps yet. (Submitted by Bradley
+   Schwoerer, University of Wisconsin-Madison.)
+
+*) Added clear_username_at_logout site policy to login cgi to control
+   whether the username is cleared on logout.
+
+*) Fixed Apache module to close key file descriptor after reading it.
+
+*) New default HTML login templates. Contributed by Konstantin
+   Ryabitsev, McGill University.
+
+*) Modified login cgi and default templates to use utf-8 encoding.
+
+*) Modified Apache module to set Expires, Cache-Control and Pragma
+   headers via the Error headers used on redirects.
+
+*) Fixed keyserver.c SSL3_GET_RECORD errors with redundant login_servers
+   by closing stdin/stdout/stderr. (Submitted by <mrevil@gmail.com>)
+
+*) Added PubcookieCatenateAppIDs directive to Apache module. Contributed
+   by Doug DeJulio, Carnegie Mellon University.
+
+*) Fixed Apache module to halt startup if security initialization fails;
+   e.g. when PubcookieSessionCertFile doesn't exist.
+
+*) Modified LDAP verifier so that a few duplicate audit log messages
+   are only be logged at the debug level.
+
+*) Fixed null pointer usage in LDAP verifier when version is empty.
+
+*) Improved Unix keyclient error messages concerning keymgt_uri host.
+
+*) Replaced AddHeader() with SetHeader() in ISAPI filter to eliminate
+   duplicate HTTP Header values.
+
+*) Modified login cgi to use more consistent audit logging strings.
+   Prepended the "first kiss" timestamp to authentication success and
+   failure log file messages.
+
+*) Fixed bug in Apache module's AES encryption mode that causes session
+   cookies to be unreadable when PubcookieInactiveExpire is on.
+
+*) Modified Apache 2 Makefile to better support Apache 2.2 builds.
+
+*) Modified login cgi to allow 'http:' and 'https:' in app server uri
+   query strings without percent encoding the colon.
+
+Changes with 3.3.0a:
+
+*) Applied login server security fixes to address XSS vulnerabilities  
+   described in February 2006 security advisory.
+   
+*) Fixed getcred login flavor by applying correct encryption method and
+   setting correct domain on pubcookie_cred cookie.
+   
+*) Fixed virtual host problems in Apache module by using the correct
+   peer name when calling libpbc_mk_priv.
+
+*) Modified several login templates. Added Content-Type definition with
+   charset=ISO-8859-1 to error, login, nonpost_redirect, notok, status,
+   pinit_response1, and logout_part1 templates. Also removed comment
+   with redirect-url substitution from nonpost_redirect template.
+
+*) Modified module and filter extension to use HTTP 302 redirects instead
+   of meta-refresh on redirects back to the original resource. Also 
+   updated the handling of output values when printing redirect pages.
+
+*) Removed dumpvars.asp from sample web application and installer.
+
+*) Fixed login cgi to report the correct time remaining after a pinit.
+
+*) Applied Bradley Schwoerer's fixes for strict compilers.
+
+*) Applied Steve Losen's fix for libpbc_get_credential_id declaration.
+
+Changes with 3.3.0:
+
+*) No source code changes. A few documentation updates, that's all.
+   Note: There is a known problem in the 3.3.0 release with Kerberos
+   ticket passing via the getcred flavor. Sites using this functionality
+   should continue to use the latest 3.2 release and wait for a 3.3.x
+   patch release.
+
+Changes with 3.3.0 Beta 2:
+
+*) Fixed MMC snap-in to display the correct default, inherited, or
+   explicitly applied AppId setting.
+
+*) Added lowercase_username and uppercase_username site policies to the
+   login cgi for modifying the case of the username.
+
+*) Disabled "If-Modified-Since" headers in Apache module for protected
+   pages when setting or updating cookies. This fixes logins for the
+   Opera browser. Perhaps others too.
+
+*) Version strings for ISAPI filter are generated from configure.ac, as
+   are PubcookieFilter.h and PubCookieFilter.rc.
+
+Changes with 3.3.0 Beta 1:
+
+*) Improved login cgi and Apache module to better handle stray,
+   malicious, and other spurious cookies by reading all available cookie
+   instead of checking only the first cookie.
+
+*) Removed trailing space after Pubcookie event source name to create
+   event log entries that match the source name in the registry.
+
+*) Changed all references to time_t (or int used as a time) to
+   pbc_time_t to better support 64-bit and other architectures that may
+   represent time as something other than 32-bit integer. Also changed
+   all calls to time() to call pbc_time(), which correctly sizes the
+   returned time_t to pbc_time_t.
+
+*) Version strings for Unix components are generated from configure.ac.
+   pbc_version.h is now generated from pbc_version.h.in, which is filled
+   in from the new variables in configure.ac. 
+
+*) Fixed keyserver to propagate alternate config file to keyclient calls
+   when keyserver is called with -f option.
+
+*) Added more specific error messages to Apache module for missing
+   certificate and key files.
+
+*) More fixes for 64-bit systems from Allan E. Johannesen, Worcester
+   Polytechnic Institute, and Steve Losen, University of Virginia.
+
+*) Added AES encryption support to login cgi, Apache module, and filter.
+   The application server determines which encryption algorithm is used,
+   configurable by the new PubcookieEncryption directive . AES
+   is the default and will require a AES-encryption-enabled (version 3.3
+   or higher) login server.
+
+*) Removed pre-session cookie processing from the Pubcookie filter,
+   completely, and from Apache module when using the POST method.
+   Pre-session cookies are a countermeasure to threats posed by
+   enterprise-domain cookies; so they're unnecessary when the
+   authenticaiton information is transported using the POST method.
+
+*) Fixed login cgi to forgo clearing the granting request cookie during
+   POST method login requests; there is no such cookie to clear.
+
+*) Better error handling in login cgi when encountering an error during
+   initialization.
+
+*) Removed remnants of Enterprise_Domain setting from MMC extension.
+
+*) Fixed Apache module to recover from pre-session cookie problems.
+
+*) Fixed Pubcookie filter to apply default AppID to root level files.
+
+Changes with 3.2.1a:
+
+*) Defined the maximum allowable amount of post data that the Apache 
+   module will attempt to send thru the login process. 10MB is the limit.
+
+*) Added error handling to Apache module and ISAPI filter for query        
+   strings that are too long to go thru the login process (>1900 bytes).
+
+*) Restored original Event log source names in the registry for Pubcookie;  
+   i.e. we're back to using PubCookie-<x> where <x> is the current web
+   instance.
+
+*) Fixed Pubcookie filter to preserve port numbers and query strings thru
+   the login process.
+
+*) Increased a number of buffer sizes in Pubcookie filter so that granting
+   request data isn't accidentally truncated.
+
+Changes with 3.2.1:
+
+*) Fixed Apache module to avoid possible null pointer in REMOTE_REALM 
+   variable. Patch provided by Klas Lindfors, Stockholm University.
+
+*) Revised "fork" verifier to pass username and password via stdin to
+   the forked executable. The config file key has been changed from
+   fork_exe to verify_exe to avoid accidentally running the wrong
+   executable. Code submission from David Houlder, Australian National
+   University.
+
+*) Initialize keyclient and keyserver with null credentials to fix 
+   potential bizarre behavior. [miner]
+
+Changes with 3.2.1 Beta 2:
+
+*) Fixed LDAP verifier to default to LDAPv3 for all LDAP SDKs and added
+   "x-Version" parameter to the LDAP URL. Patch provided by Jon Miner,
+   University of Wisconsin-Madison.
+
+*) Added keyclient and keyserver option (-f) to specify alternate config
+   file. Patch provided by Jon Miner, University of Wisconsin-Madison.
+
+*) Fixed login cgi segfault due to missing templates. Patch provided by
+   Jon Miner, University of Wisconsin-Madison.
+
+*) Fixed 64-bit compilation problems as reported by Allan E. Johannesen,
+   Worcester Polytechnic Institute.
+
+*) Modified Apache module to assure that the configured enterprise
+   domain starts with a dot.
+
+Changes with 3.2.1 Beta 1:
+
+*) Pubcookie.msi installer will continue with the installation after 
+   keyclient errors. User will have to re-run keyclient manually.
+
+*) Added certificate picker to Windows keyclient. This allows a user to
+   run the keyclient manually to pick among multiple valid certificates.
+
+*) Fixed PubcookieFilter problem that was crashing the Windows Event
+   Viewer on some systems.
+
+*) Added login_host_cookie_domain to make login cookie domain
+   configurable. [jeaton]
+
+*) Added realm, if present, to authentication success message in
+   flavor_basic logging. [jeaton]
+
+*) Improved error logging in Kerberos verifier. [jeaton]
+
+*) Fixed log message on denied credential request in flavor_getcred.c. 
+   [jeaton]
+
+*) Fixed off-by-one malloc error and added malloc failure logging in
+   flavor_basic.c. [jeaton]
+
+*) Added PubcookieNoObscureCookies directive to Apache module to replace 
+   broken PubcookieNoBlank directive.
+
+*) Pubcookie filter changes: better handling of expired/uncleared 
+   granting cookies, favicon.ico exemption, and some memory leaks fixed.
+
+*) Pubcookie.msi installer changes: removed enterprise domain config;
+   added third option to RUNKEYCLIENT, download existing key; added
+   RUNKEYCLIENT options to GUI-mode installer.
+
+*) Updated OpenSSL libraries to 0.9.7f for Win32. 
+
+*) Fixed memory leaks in Pubcookie library and legacy security code.
+
+*) Fixed logging on FreeBSD to use correct syslog facility.
+
+*) Removed explicit domain scoping of login cookies in login cgi.
+
+*) Fixed bug in Apache module to preserve spaces in post data when using 
+   the POST login method.
+
+*) Fixed variable substitution in templating when one tag immediately 
+   follows another, e.g. %attr1%%attr2%. Code submission by Steve Losen,
+   University of Virginia.
+
+*) Put login cgi redirect logging into normal audit logging stream. 
+   (Originally reported by Benjamin Armintor, University of Texas-Austin.)
+
+*) Added kerserver support for subjectAltName wildcards. Code submission 
+   by Bradley Schwoerer, University of Wisconsin-Madison.
+
+*) Removed bogus call to free() that was causing segmentation faults in
+   the Sun LDAP section of LDAP verifier. (This bug originally discovered
+   and reported by Benjamin Armintor, University of Texas-Austin.)
+
+*) Fixed security code (security_legacy.c) to close crypt key files. It
+   was leaving them open, which creates stray open files, e.g. one per
+   virtual host on Apache. (Patch provided by Frank Fujimoto, who noticed 
+   on a host with 18 virtual hosts.)
+
+Changes with 3.2.0:
+
+*) Fixed login cgi's POST login method to provide continue button for 
+   browsers that have disabled or don't support Javascript.
+
+*) Exempt the post reply URL in mod_pubcookie so that the entire site can
+   be protected using the POST login method.
+
+Changes with 3.2.0 Beta 2:
+
+*) Tidied source code. See doc/HACKING.txt for 'indent' format.
+
+*) Fixed login cgi to use the login_unauth_grant template when an 
+   unauthorized application server requests login.
+
+*) Modified login cgi's cgic code to truncate Content-type header at the 
+   first semicolon. This fixes some problems with some, but not all,
+   Blackberry devices. 
+
+*) Fixed clearing of granting cookie when using POST method.
+
+*) Fixed keyserver "permit" handling to allow args in different orders. 
+
+Changes with 3.2.0 Beta 1:
+
+*) Added Karl Schricker's patch to shadow verifier to make shadow password
+   file location configurable.
+
+*) Modified Apache module to exempt the server's /favicon.ico file location
+   from authentication. This fixes login problems when some browsers (like
+   Safari and Firefox) make parallel requests to a resource and the favicon
+   file and don't handle the various cookies very well. 
+
+*) Restrict use of POST login method to same app server host. This
+   prevents a spoof of the granting-reply location in a man-in-the-middle
+   attack. 
+
+*) Fixed login cgi crash with alwaystrue verifier when userid is null. 
+
+*) Added support for custom per-application login messages to login cgi
+   and login template. Introduces optional custom_login_message_dir and 
+   custom_login_file_prefix config file variables. 
+
+*) Added keyserver options to allow keyclient to authenticate using
+   wildcard certs and to support Subject Alt Names. 
+
+*) Added keyserver option to allow keyclient certificates that are signed
+   by untrusted CAs to cache a public key certificate on the keyserver. 
+   This allows them to get crypt keys using an otherwise untrusted cert. 
+ 
+*) Added keyclient parameter "-U cert_file" to upload a public key
+   certificate to the keyserver. This can only be done from a trusted
+   client, i.e. in the "keyserver_client_list" list. 
+
+*) Added another check (using httpd) to configure script for determining
+   Apache version. 
+
+*) Added POST login method to ISAPI filter/extension. That is, the filter
+   is now also an extension, with the old relay functions incorporated
+   into the extension. The filter calls the extension directly by virtual
+   filename, which must be set up in IIS; the installer will do this. 
+ 
+*) Fixed credential passing in new POST login method. 
+
+*) Moved more static HTML from source to login templates. New templates:
+   notok, notok_badagent, notok_form_multipart, notok_generic,
+   notok_need_ssl. Removed templates: notok_part1, notok_part2. 
+
+*) Fixed login cgi crash due during pinit due to fprintf null value.
+   Original bug report made by Christian on pubcookie-users list. 
+
+*) Fixed login cgi crash due to missing sub-template file.
+
+*) Added POST login method to the Apache module for messaging between
+   application server and login server. This feature allows
+   cross-dns-domain logins without the (obsoleted) relay cgi. New server
+   directives are PubcookieLoginMethod and PubcookiePostURL. 
+
+*) Modified Apache module to redirect in the 'check-user' hook rather than
+   using the current 'type-check' and 'handler' methods. This improves 
+   compatibility with other modules that introduce their own handlers. 
+
+*) Modified Apache module to use the request_config record for dynamic 
+   info associated with a request. It was using the per_dir_config record. 
+
+*) Apache module now reports authorization failure on unauthenticated
+   subrequests. We accept that in subrequests we can't do redirects.
+
+*) Added the variable substitution for the form_expire_time variable to
+   the form_expired template. Users who time out will see how long they
+   have to authenticate.
+
+*) Fixed filter to not truncate Instance_id to 8 characters. New limit is
+   64. 
+
+*) Added version string to login server templates as HTML comment.
+
+Changes with 3.1.1:
+
+*) Fixed redirect back to apps that had sent POST arguments. 
+
+*) Fixed login server crash when the granting key is unreadable. A missing
+   or unreadable granting key is now a critical failure.
+
+*) Added form_expire_time variable to make the login form expiry
+   configurable. Default is 60 seconds.
+
+*) Added missing APR_CREATE mode in mod_pubcookie for Apache 2 when 
+   creating file for delegated Kerberos service tickets. Bug reported by
+   Marlow at Sandia National Laboratories. 
+
+*) Added relay_login_uri variable to allow relay to work on same system as
+   login server. If it's missing the relay will fall back to the login_uri
+   as before. 
+
+*) Added "domain" parameter to the relay uri to allow multiple domain
+   relays to coexist on same system. 
+
+*) Modified relay to use its URI as requested rather than relay_uri, 
+   which is no longer used.
+
+*) Added workaround to MMC extension for Clipboard format bug found in
+   Windows XP Pro.
+
+*) Improved build process on Mac OS X 10.3.4.
+
+*) Fixed MMC extension to handle Pubcookie directives that are also 
+   server values, e.g. Login_URI. Default directives are now only
+   read, written, and deleted from "/default" instead of both from
+   "/default" and "/". This mirrors what the ISAPI filter reads. 
+
+*) Added Pubcookie relay to Pubcookie.msi installer.
+
+*) Updated OpenSSL build to 0.9.7d for Win32.
+
+*) Fixed keyclient to verify the keyserver's certificate.
+
+*) Minor updates to relay documentation.
+
+*) Removed special characters from pathname AppID string to fix bug
+   reported by Rand in 3.1.0 release.
+
+Changes with 3.1.0:
+
+*) Added code to detect AIX and module upgrades and set a conditional 
+   for make to exclude portions of the Makefile. 
+   [miner]
+
+*) Added a warning about running slibclean to the Makefile to display a 
+   warning if we're upgrading on an AIX machine.
+   [miner]
+
+*) Added krb5_service_name variable to verify_kerberos5.c, so the 
+   login cgi can use its own service key and not the host principal
+   that other services use.
+   [willey]
+
+*) Added more debugging for Kerberos authentication.
+   [willey]
+  
+*) Created "apache2" branch and applied Lars Uffmann's patch to 
+   post 3.0.0 code. Applied second patch from Lars.
+   [willey]
+
+*) Applied Leif Johansson's no addrs patch for setting up my initial
+   (heimdal) Kerberos TGT options: sets a null list of addresses.
+   Forwarded credentials typically need to have the address of the app
+   server in them as oposed to the addresses of the login server. 
+   [willey]
+
+*) Added autoconf test to detect and support Heimdal Kerberos
+   [willey]
+
+*) Create a session key pair on the fly if the files don't exist.  
+   #ifdefed for WIN32. This change allows a filter installation to
+   contain no private keys on disk.
+   [ryanc]
+
+*) Added pbc_messages.dll to get rid of the "description for Event ID
+   ( foo ) in Source ( foo ) cannot be found" error in the event 
+   [ryanc]
+
+*) ISAPI filter now threadsafe. Only one filter loaded for all web
+   instances and IP addresses. No global variables.  Context pointer
+   is passed between all functions in filter that are in ISAPI control
+   flow.  Startup functions have no context and are only called once. 
+   Filter no longer keeps global statistics or any other global state. 
+   [ryanc]
+
+*) All filter logging now done to event log. Filter will create logging
+   sources for PubCookie and PubCookie-<x> where <x> is the current
+   web instance. 
+   [ryanc]
+ 
+*) Removed PubcookieFilter_Reset feature since there is no longer any
+   global state to reset.
+   [ryanc]
+
+*) Fixed user field static on expired login cookie
+   [steve]
+
+*) Added keyserver "permit" option for authorizing new servers.
+   [fox]
+
+*) When changing between flavors username is static.
+   [steve]
+
+*) Changed login cgi logging format and content, and added IP, to auth 
+   success log message.
+   [steve]
+
+*) Added verify_fork.c from Tim Funk <funkman@joedog.org> 
+   [steve]
+
+*) Better out-of-the-box autoconf action on RedHat.
+   [steve]
+
+*) Updated flavor_basic to allows multiple token substitution in
+   sub-templates for login page; to put cursor in correct field on
+   login page; to make username from expired login cookie or on reauth
+   unchangable (should probably be an option); to accept valid login 
+   cookies from other flavors.
+   [steve]
+
+*) Added login_unauth_grant template and log entry from login cgi for
+   unauthorized hosts that make an authn request.
+   [fox]
+
+*) Updated Win32 keyclient to use new threadsafe code. keyclient 
+   itself is still single threaded.
+   [ryanc]
+
+*) Updated login cgi to delete login cookie on 'really logout'
+   [fox]
+
+*) Added ability to write to mirrorfile from ntmpl templates and 
+   better (templatable) message for authn server problems.
+   [willey]
+
+*) Added static_user_field variable to decide when the user field is
+   static or edittable by the user.
+   [willey]
+
+*) Updated OpenSSL build to 0.9.7c for Win32.
+   [ryanc]
+
+*) Updated PubCookieFilter project to Visual Studio .NET format.
+   [ryanc]
+
+*) Added support for virtual hostnames.
+   [ryanc]
+
+*) Make config file key lookups case insensitive 
+   [willey]
+
+*) Removed some memory leaks 
+   [willey]
+
+*) Added use_granting flag to all encrypt/sign calls.  This lets a call
+   use a named peer for the DES key and the local session keypair for 
+   signing at the same time.  Required for virtual host support.
+   [ryanc]
+
+*) Added trim_username_to_atsign variable as a site policy on trimming
+   usernames at the first at sign.
+   [willey]
+
+*) Added retain_username_on_failed_authn variable to retain the
+   username on failed auths. 
+   [willey]
+
+*) Removed hardcoded copyright text from click-to-continue POST page
+   generated by the Apache module.
+   [willey]
+
+*) Fixed virtual server in mod_pubcookie.
+   [jeaton]
+
+*) Retired debug variable, use logging_level. Also fixed some logging 
+   levels.
+   [willey]
+
+*) Added new kiosk mode configuration. 
+   [fox]
+
+*) In preparation for multiple server configs, functions now pass the 
+   Apache memory pool parameter p, which has been defined for Windows
+   as type pubcookie_dir_rec. This allows removal of some Windows 
+   specific code, but adds some header complexity. May provide a
+   small performance boost as some stack-allocated buffers were
+   eliminated in favor of one new buffer in pubcookie_dir_rec. 
+   [ryanc]
+
+*) Windows pbc_myconfig functions now work for Unicode or ANSI
+   strings. 
+   [ryanc]
+
+*) ISAPI filter now supports configuration for each web instance;
+   default is still in main pubcookie filter service key.  Arbitrary
+   config is possible by inventing a fictitious web instance, this is
+   done for the relay cgi for example. 
+   [ryanc]
+
+*) Added relay capability for cross-domain authentication.
+   [fox]
+
+*) Added login form timeout and corresponding form_expired template.
+   [fox]
+
+*) Merged security-context branch for better virtual host support in 
+   Apache module. 
+   [jeaton]
+
+*) Enhanced PubcookieSessionCauseReAuth to accept a number-of-seconds
+   parameter. If the user has entered a password in less time than
+   this parameter they don't have to reenter a password. Added 
+   necessary changes login cgi too.
+   [fox]
+
+*) Apache 2.0 now supported.
+   [fox]
+
+*) Changed the behavior of the module install to prepend a '#' to the
+   LoadModule line for pubcookie.  This can be removed when the admin
+   adds the other pubcookie config lines.
+   [fox]
+ 
+*) Build improvements. APACHE1_3 is defined for a version 1.3 build of
+   apache.  APACHE2 is defined for an apache 2.0 build.  APACHE is now
+   defined in the Makefile for any module build. 
+   [fox]
+
+*) Restored read timeouts to version 1.3 modules.  Not needed in 2.0.
+   Restored check for SSL. Requires 1.3 or at least 2.0.49.
+   [fox]
+
+*) Modified keyclient and keyserver to distribute granting cert. Usage:
+   ./keyclient -G <output_filename>
+   [fox]
+
+*) Send keyclient errors to stderr instead of syslog so they're seen.
+   [jeaton]
+
+*) Changed getcred flavor to support transfer of multiple kerberos tickets
+   from the login server to an application server (instead of just one). 
+   [jeaton]
+
+*) Added granting cert download option to Win32 keyclient.
+   [ryanc]
+
+*) Added new PubCookieOnDemand and PubCookieNoPrompt directives.
+   [fox]
+ 
+*) Installed a common command_rec for both apache 1.3 and 2.0 to make
+   maintenance easier.
+   [fox]
+
+*) Modified keyserver: no keyserver_client_list now means no 
+   restriction on access. This was the original setting and seems to
+   be the most flexible. 
+   [fox]
+
+*) Modified ISAPI filter to prevent looping when granting cookie has 
+   expired. Now causes an error message.
+   [ryanc]
+
+*) Added FastCGI support to login cgi. This allows one or more
+   index.cgi programs to persist as a FastCGI process and handle many
+   requests. Configure with: --with-fcgi=<path to fcgi install>.  For
+   reference see: http://www.fastcgi.com/
+   [fox]
+ 
+*) Remove the global server variable (globalsr) from the Apache2
+   module. 
+   [fox]
+ 
+*) Fixed pubcookie library logging to work correctly in the module.
+   Follows Apache's LogLevel.
+   [fox]
+ 
+*) Configure now looks for kerberos dependency in OpenSSL.
+   [fox]
+ 
+*) Fixed occasional core dump during some subrequests, e.g., on
+   directory indexes.
+   [fox]
+
+*) Added PubCookieNoPrompt capability to the getcred flavor.
+   [fox]
+
+*) Fixed redirect to the login server so that Safari won't cache it.
+   [jeaton]
+
+*) Fixed missing cgi counters to non-fcgi version.
+   [fox]
+
+*) Cleaned up code to prevent compiler warnings.
+   [jeaton]
+
+*) Added credential cache cleanup patch from Christopher Maxwell.
+   Also (thanks to Leif Johansson) uniqified credential cache
+   everywhere.
+   [jeaton]
+
+*) Fixed keyclient to run without an existing granting cert and made 
+   help text easier to read.
+   [fox]
+ 
+*) Apache module needed a local "ap_get_local_host" to work on AIX and
+   Apache 2.x. Problem with apache's exported symbols. 
+   [fox]
+    
+*) Moved module build to separate directory, generated by configure,
+   to avoid compilation conflicts between shared files.
+   [fox]
+ 
+*) Fixed module DSO build to work for Apache 1.3 and 2.x on linux and 
+   AIX. Don't have any other systems to try.
+   [fox]
+ 
+*) Added static module build for apache 1.3. Static modules not
+   supported in apache 2.x. Configure options for module:
+   --enable-apache        enables building of module (default on)
+   --with-apxs=PATH       builds DSO module (path is to apxs)
+   --with-apache-src=DIR  configures static build (DIR/src/modules/pubcookie) 
+   [fox]
+
+*) Configure now requires either --with-apxs or --with-apache-src to
+   build the module. 
+   [fox]
+ 
+*) Provide default DSO module build if apxs is found in the users path.
+   [fox]
+
+*) Modified keyserver to lowercase hostnames when creating file names 
+   for keys.
+   [willey]
+
+*) Add config.h and pbc_path.h to list of files linked to module dir.
+   [fox]
+
+*) Fixed keyclient to exit with status 0 on success, status 1 on error.
+   [fox]
+
+*) Updated CMU templates in pubcookie/src/login_templates.cmu.
+   [jeaton]
+
+*) In IIS MMC, an AuthType defined as a null string will now not 
+   show up as a choice in the drop-down for AuthType in the directives
+   view.  Any AuthType can thus be removed from the AuthType directive
+   list by setting it to a null string in the Server Variables view. 
+   [ryanc]
+
+*) Added in missing LIBS so that it links mod_pubcookie to libssl and
+   libcrypto, like it should (and used to do); also need the LDFLAGS 
+   so we can find the libraries.
+   [jeaton]
+
+*) Fixed problem on systems with both Apache 1.3 and 2.0: configure 
+   sometimes used the wrong apxs. 
+   [fox]
+
+*) Added new Makefiles and relay cgi to distribution. 
+   [fox]
+
+*) Added No_Prompt support to ISAPI filter and config.
+   [ryanc]
+
+*) Modified Apache build: Don't try to make module if static module 
+   build; don't try to install module on static build; lLook for apxs
+   in the usual places for default build; don't look for apxs on
+   static module build.
+   [fox]
+
+*) Updated documentation mainly for P3.1
+   [dors]
+
+*) Prevent looping between login server and Apache module when
+   granting cookie has expired. 
+   [steve]
+
+*) Modified keyserver to break hung connections. The config variable
+   keyserver_max_wait_time variable sets the maximum time it will wait
+   for data after a connection is established. Default is zero (no
+   timeout). 
+   [fox]
+
+*) Added possible fix for keyserver running on a cluster of login
+   servers.
+   [steve]
+
+*) Applied Christopher Maxwell's patch to mod_pubcookie.c to fix
+   multiple version strings in Server header. 
+   [willey]
+
+*) Replaced (server)->port with ap_get_server_port(), and
+   ap_get_local_host() with (server)->server_hostname, to allow the
+   port numbers to be correct in virtual hosts in Apache 2.0 and
+   eliminate local code for ap_get_local_host in the Apache 2.0
+   version. 
+   [fox]
+
+*) Added keymgt_peers variable to allow keyservers to push to hosts
+   not in their cluster.
+   [willey]
+
+*) Added starter.key for keystore initialization.
+   [dors]
+
+*) Revised login-install.html guide and config.html reference for 3.1 
+   release. Added new templates.html reference and install-filter.html. 
+   [dors]
+
+*) Improved ISAPI filter behavior when crypt key does not exist for 
+   virtual host: if the page is authtype NONE, it will still serve the
+   page. 
+   [ryanc]
+
+*) Added message source registry entries for pubcookie, pubcookie-1, 
+   pubcookie-2, pubcookie-3 to filter installer.  This is to work
+   around problem with IIS 6 in that it sometimes does not have the
+   permissions at runtime to modify the registry. 
+   [ryanc]

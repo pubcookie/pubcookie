@@ -1,0 +1,47 @@
+
+Summary:  This is what exists of a Pubcookie hacking & coding guide.
+
+1) Code Style
+
+Here are some guidelines for writing code in the Pubcookie style:
+
+    * use four spaces for indentation -- not a tab
+
+    * use a space between statement operators and their parentheses
+         e.g. "if (blah)" not "if(blah)"
+
+    * use whitespace generously
+
+    * wrap lines at 75 characters
+
+    * braces for statements should start on the same line as the statement.
+
+    * braces for functions should start on a new line.
+
+    * document your functions using Doxygen comments:
+         http://www.stack.nl/%7Edimitri/doxygen/
+
+    * style is tidied by "indent -gnu -i4 -npsl -bad -br -ce -nut -l75"
+
+2) Logging in mod_pubcookie
+
+Logging in mod_pubcookie should be done with an ap_log_error() or
+ap_log_rerror() call, depending on whether you have a request (r) or
+server (s) record handy. Note: ap_log_rerror() logs the client ip.
+
+    Examples:
+
+    ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|AP_LOG_DEBUG, r,
+        "pubcookie_user: has granting; current uri is: %s\n", r->uri);
+
+    ap_log_error(APLOG_MARK, APLOG_NOERRNO|AP_LOG_DEBUG, s,
+        "pubcookie_user: has granting; current uri is: %s\n", r->uri);
+
+    Levels:
+
+    AP_LOG_EMERG - things are really broken, can't go on, bail
+    AP_LOG_INFO  - normal logging of redirects and the like
+    AP_LOG_DEBUG - super-debug or other really verbose crap
+
+$Id: HACKING.txt,v 1.3 2004/12/21 17:16:45 willey Exp $
+

@@ -1,0 +1,96 @@
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>UW NetID Weblogin</title>
+  </head>
+
+  <body bgcolor="white" onLoad="document.query.elements[0].focus()">
+  <center>
+    <table cellpadding="0" cellspacing="0" border="0" width="580">
+      <tr>
+        <td width="310" valign="middle">
+          <img src="media/login/weblogin.gif" alt="" height="57" width="198">
+
+          <form name="query" method="POST" action="%loginuri%"
+    enctype="application/x-www-form-urlencoded" autocomplete="off">
+
+<!-- Custom login message, if there is such -->
+%message%
+<!-- The end of reasons. -->
+
+<!-- The reason we were sent here. -->
+%reason%
+<!-- The end of reasons. -->
+
+<P>
+<B>UW NetID:</B><BR>
+%user_field%
+<P>
+<B>Password:</B><BR>
+%pass_field%
+<P>
+<B>SecurID:</B><BR>
+<INPUT TYPE="text" NAME="pass2" SIZE="20">
+
+          <P>
+<!-- The hidden fields -->
+%hiddenuser%
+%hiddenfields%
+<!-- End of inserted stuff. -->
+          </P>
+
+            <P>
+              <input type="SUBMIT" name="submit" value="Log in">
+            </P>
+
+          </form>
+        </td>
+        <td width="9">
+          &nbsp;
+        </td>
+        <td width="2" bgcolor="#000000">
+          <img src="media/1pixffcc33iystpiwfy.gif" width="1" height="1" align="BOTTOM" alt="" oncontextmenu="return false">
+        </td>
+        <td width="9">
+          &nbsp;
+        </td>
+        <td width="250" valign="MIDDLE">
+          <p>
+            <a href="https://uwnetid.washington.edu/newid/">Need a UW NetID?</a>
+          </p>
+          <p>
+            <a href="http://www.washington.edu/computing/uwnetid/password/forget.html">Forget your password?</a>
+          </p>
+          <dl>
+              <dt>Have a question?</dt>
+            <dd>
+              <a href="http://www.washington.edu/computing/uwnetid/">Read About UW NetIDs</a><BR>
+	      <a href="http://www.washington.edu/computing/weblogin/">Read About "weblogin"</A><BR>
+              <a href="http://www.washington.edu/computing/help/">Contact C&amp;C</a>
+            </dd>
+          </dl>
+        </td>
+      </tr>
+
+      <tr>
+        <td colspan="5" align="center">
+          <p>
+            Login gives you 8-hour access without repeat login to UW NetID-protected Web resources.
+          </p>
+          <p>
+            <strong>WARNING</strong>: Protect your privacy! Prevent unauthorized use!<br>
+            <a href="http://www.washington.edu/computing/weblogin/logout.html">Completely exit your Web browser when you are finished.</a>
+          </p>
+        </td>
+      </tr>
+      <tr>
+        <td colspan="5" align="center">
+          <small>Copyright &#169; 2004 University of Washington</small>
+        </td>
+      </tr>
+    </table>
+  </center>
+  <!-- Version: %version% -->
+</body>
+</html>
