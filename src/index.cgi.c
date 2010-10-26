@@ -458,7 +458,7 @@ void print_http_header (pool * p)
     print_header (p,
                   "Cache-Control: no-store, no-cache, must-revalidate\n");
     print_header (p, "Expires: Sat, 1 Jan 2000 01:01:01 GMT\n");
-    print_header (p, "Content-Type: text/html; charset=ISO-8859-1\n");
+    print_header (p, "Content-Type: text/html; charset=UTF-8\n");
 }
 
 /**
