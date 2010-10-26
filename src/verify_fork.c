@@ -155,8 +155,8 @@ int verify_fork_v (pool * p,
             return -2;
         }
         pbc_log_activity (p, PBC_LOG_DEBUG_VERBOSE,
-                          "verify_fork: wait=%d", status);
-        if (0 == status)
+                          "verify_fork: wait=0x%x exited=%d status=%d", status, WIFEXITED(status), WEXITSTATUS(status));
+        if (WIFEXITED(status) && 0 == WEXITSTATUS(status))
             return 0;
         pbc_log_activity (p, PBC_LOG_DEBUG_OUTPUT,
                           "verify_fork: setting error");
