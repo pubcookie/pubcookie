@@ -96,6 +96,7 @@ typedef struct
     char *post_reply_url;
     security_context *sectext;
     unsigned char crypt_alg;
+    int vitki_behind_proxy;
 }
 pubcookie_server_rec;
 

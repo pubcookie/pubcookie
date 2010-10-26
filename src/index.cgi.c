@@ -137,6 +137,9 @@ FILE *headerout = NULL;
 /* do we want debugging? */
 int debug;
 
+/* ignore port in relay uri? */
+int vitki_relay_behind_proxy;
+
 /* Cookies are secure except for one exception */
 #ifdef PORT80_TEST
 static char *secure_cookie = "";
@@ -2167,6 +2170,7 @@ int cgiMain_init ()
     libpbc_config_init (p, altconfig, "logincgi");
 
     debug = libpbc_config_getint (p, "debug", 0);
+    vitki_relay_behind_proxy = libpbc_config_getint (p, "vitki_relay_behind_proxy", 0);
     pbc_log_init_syslog (p, "pubcookie login server");
 
     if (altconfig != NULL) {
@@ -2365,6 +2369,23 @@ int cgiMain ()
 
     pbc_log_activity (p, PBC_LOG_DEBUG_LOW,
                       "cgiMain: checked user_agent, logout, and pinit.");
+
+    if (l->relay_uri && vitki_relay_behind_proxy) {
+        char *cp = strchr(l->relay_uri, ':');
+        int pos = (int)(cp - l->relay_uri);
+	if (cp[1] == '/' && (pos == 4 || pos == 5)) {
+            cp = strchr(cp+1, ':');
+	}
+        if (cp) {
+            char *sp = cp + 1;
+            while (*sp >= '0' && *sp <= '9')
+                sp++;
+            if (*sp == '/' || *sp == '0') {
+                strcpy(cp, sp);
+            }
+        }
+        pbc_log_activity (p, PBC_LOG_DEBUG_VERBOSE, "Relay behind proxy: %s", l->relay_uri);
+    }
 
     /* allow for older versions that don't have force_reauth */
     if (!l->fr) {

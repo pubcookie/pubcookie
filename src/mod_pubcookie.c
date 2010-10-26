@@ -955,7 +955,7 @@ static int auth_failed_handler (request_rec * r,
     /* if there is a non-standard port number just tack it onto the hostname  */
     /* the login server just passes it through and the redirect works         */
     port = ap_get_server_port (r);
-    if ((port != 80) && (port != 443)) {
+    if ((port != 80) && (port != 443) && !scfg->vitki_behind_proxy) {
         /* because of multiple passes through don't use r->hostname() */
         host = ap_psprintf (p, "%s:%d", ap_get_server_name (r), port);
     }
@@ -1152,7 +1152,7 @@ static int auth_failed_handler (request_rec * r,
 
     if (scfg->use_post) {
         char cp[24];
-        if (port == 80 || port == 443)
+        if ((port == 80 || port == 443) && !scfg->vitki_behind_proxy)
             cp[0] = '\0';
         else
             sprintf (cp, ":%d", port);
@@ -1489,6 +1489,8 @@ static void *pubcookie_server_merge (pool * p, void *parent, void *newloc)
                                           pscfg->configlist);
     scfg->crypt_alg =
         nscfg->crypt_alg ? nscfg->crypt_alg : pscfg->crypt_alg;
+    scfg->vitki_behind_proxy =
+        nscfg->vitki_behind_proxy ? nscfg->vitki_behind_proxy : pscfg->vitki_behind_proxy;
 
     return (void *) scfg;
 }
@@ -2999,6 +3001,20 @@ const char *set_no_clean_creds (cmd_parms * cmd, void *mconfig, int flag)
   return NULL;
 }
 
+const char *set_vitki_behind_proxy (cmd_parms * cmd, void *mconfig, int flag)
+{
+  server_rec *s = cmd->server;
+  pubcookie_server_rec *scfg;
+  ap_pool *p = cmd->pool;
+
+  scfg = (pubcookie_server_rec *) ap_get_module_config (s->module_config,
+							&pubcookie_module);
+
+  scfg->vitki_behind_proxy = flag;
+
+  return NULL;
+}
+
 /*                                                                            */
 const char *pubcookie_set_no_ssl_ok (cmd_parms * cmd, void *mconfig,
                                      char *v)
@@ -3247,6 +3263,10 @@ static const command_rec pubcookie_commands[] = {
                   set_no_clean_creds,
                   NULL, RSRC_CONF,
                   "Set to leave credentials in place after cleanup"),
+    AP_INIT_FLAG ("PubCookieVitkiBehindProxy",
+                  set_vitki_behind_proxy,
+                  NULL, RSRC_CONF,
+                  "Set to ignore non-standard server port"),
 
 /* maybe for future exploration
     AP_INIT_TAKE1("PubCookieNoSSLOK",
