@@ -1,3 +1,5 @@
-ngx_addon_name=ngx_http_auth_pubcookie_module
+ngx_addon_name=ngx_http_auth_ubcookie_module
 HTTP_FILTER_MODULES="$HTTP_FILTER_MODULES ngx_http_auth_pubcookie_module"
 NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/ngx_http_auth_pubcookie_module.c"
+pubcookie_inc_dir=$(readlink -f $ngx_addon_dir/../..)
+CORE_INCS="$CORE_INCS $ngx_addon_dir $pubcookie_inc_dir"
