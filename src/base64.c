@@ -50,7 +50,9 @@ typedef apr_table_t table;
 #  endif
 
 # else
+#ifndef PBC_NGINX
 typedef void pool;
+#endif
 #endif
 
 #ifdef WIN32

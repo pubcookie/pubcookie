@@ -8,7 +8,6 @@
 
 #define OPENSSL_IN_DIR
 #undef  HAVE_CONFIG_H
-#define pool ngx_pool_t
 
 #include <ngx_config.h>
 #include <ngx_core.h>
@@ -30,6 +29,9 @@
 
 /* pubcookie stuff */
 
+typedef ngx_pool_t pool;
+#define PBC_NGINX 1
+
 #include "pbc_logging.h"
 #include "pubcookie.h"
 #include "libpubcookie.h"
@@ -38,6 +40,8 @@
 #include "security.h"
 
 #include "html.h"
+
+#include "base64.c"
 
 #define DONE NGX_DONE
 
