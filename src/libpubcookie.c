@@ -91,7 +91,9 @@
 #  include "http_protocol.h"
 #  include "util_script.h"
 # else
+#ifndef PBC_NGINX
 typedef void pool;
+#endif
 #endif
 
 #ifdef APACHE2

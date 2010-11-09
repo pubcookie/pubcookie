@@ -29,7 +29,7 @@
 
 /* pubcookie stuff */
 
-typedef ngx_pool_t pool;
+typedef ngx_http_request_t pool;
 #define PBC_NGINX 1
 
 #include "pbc_logging.h"
@@ -41,11 +41,41 @@ typedef ngx_pool_t pool;
 
 #include "html.h"
 
+#define PBC_LLEVEL NGX_LOG_WARN
+
+#define pc_req_log(r,args...) ngx_log_error_core(PBC_LLEVEL,(r)->connection->log,0,args)
+#define pc_pool_log(p,args...) ngx_log_error_core(PBC_LLEVEL,(p)->log,0,args)
+#define pc_cf_log(c,args...) ngx_log_error_core(PBC_LLEVEL,(c)->log,0,args)
+
+#define pbc_log_activity(p,l,args...) ngx_log_error_core(PBC_LLEVEL,(p)->connection->log,0,args);
+#define pbc_vlog_activity(p,l,f,va) ngx_log_error_core(PBC_LLEVEL,(p)->connection->log,0,"libpbc: %s",f);
+
+#define HAVE_STDARG_H
+#define HAVE_SNPRINTF
+#define HAVE_VSNPRINTF
+#define strlcpy pbc_strlcpy
+#define strlcat pbc_strlcat
+
 #include "base64.c"
+#include "pbc_time.c"
+#include "strlcpy.c"
+#include "libpubcookie.c"
+#define make_crypt_keyfile make_crypt_keyfile__security_legacy
+#define assert(X) do{}while(0)
+static void make_crypt_keyfile (pool * p, const char *peername, char *buf);
+#include "security_legacy.c"
+#undef make_crypt_keyfile
+
+#undef PBC_LOGIN_URI
+#undef PBC_RELAY_LOGIN_URI
+#undef PBC_KEYMGT_URI
+#undef PBC_ENTRPRS_DOMAIN
+#undef PBC_TEMPLATES_PATH
+#undef PBC_RELAY_URI
+
+#define PBC_ENTRPRS_DOMAIN (libpbc_config_getstring(r,"enterprise_domain",".washington.edu"))
 
 #define DONE NGX_DONE
-
-#define libpbc_config_getstring(p,n,v) pbc_get_cfg_str(r,n,v)
 
 #define ME(r) ap_get_server_name(r)
 
@@ -66,9 +96,6 @@ static ngx_str_t pbc_content_type = ngx_string("text/html; charset=utf-8");
 
 #define ngx_pubcookie_module ngx_http_auth_pubcookie_module
 
-#define pc_req_log(r,args...) ngx_log_error_core(NGX_LOG_WARN,(r)->connection->log,0,args)
-#define pc_cf_log(c,args...) ngx_log_error_core(NGX_LOG_WARN,(c)->log,0,args)
-
 #define ngx_str_assign(a,s) do { u_char *_p = (u_char *)(s); (a).len = ngx_strlen(_p); (a).data = _p; } while(0)
 
 static ngx_str_t blank_str = ngx_string("");
@@ -80,6 +107,7 @@ typedef struct {
     ngx_str_t login_uri;
     ngx_str_t enterprise_domain;
     ngx_str_t keydir;
+    ngx_str_t granting_key_file;
     ngx_str_t granting_cert_file;
     ngx_str_t ssl_key_file;
     ngx_str_t ssl_cert_file;
@@ -124,9 +152,6 @@ typedef struct
     pbc_cookie_data *cookie_data;
     ngx_str_t stop_message;
     ngx_str_t cred_transfer;
-    ngx_str_t passwd;
-    /*table *hdr_out; //table?*/
-    /*table *hdr_err; //table?*/
     ngx_str_t msg;
     ngx_str_t app_path;
     ngx_str_t server_name_tmp;
@@ -139,6 +164,11 @@ static struct {
     size_t offset;
 } pbc_cfg_str_fields[] = {
     { "enterprise_domain", offsetof(ngx_pubcookie_loc_conf_t, enterprise_domain) },
+    { "ssl_key_file", offsetof(ngx_pubcookie_loc_conf_t, ssl_key_file) },
+    { "ssl_cert_file", offsetof(ngx_pubcookie_loc_conf_t, ssl_cert_file) },
+    { "granting_key_file", offsetof(ngx_pubcookie_loc_conf_t, granting_key_file) },
+    { "granting_cert_file", offsetof(ngx_pubcookie_loc_conf_t, granting_cert_file) },
+    { "crypt_key", offsetof(ngx_pubcookie_loc_conf_t, crypt_key) },
     { NULL, 0 }
 };
 
@@ -548,8 +578,8 @@ dump_loc_rec(ngx_http_request_t *r, ngx_pubcookie_loc_conf_t *c)
  * Configuration
  */
 
-static const char *
-pbc_get_cfg_str(ngx_http_request_t *r, const char *name, const char *defval)
+const char *
+libpbc_config_getstring(pool *r, const char *name, const char *defval)
 {
     ngx_pubcookie_loc_conf_t *cfg = ngx_http_get_module_loc_conf(r, ngx_pubcookie_module);
     int i;
@@ -567,6 +597,7 @@ pbc_get_cfg_str(ngx_http_request_t *r, const char *name, const char *defval)
             return val;
         }
     }
+
     /* not found */
     pc_req_log(r, "PUBCOOKIE: field \"%s\" not found !!", name);
     return defval;
@@ -1218,7 +1249,7 @@ static int
 get_pre_s_token (ngx_http_request_t * r)
 {
     int i;
-    if ((i = libpbc_random_int (r->pool)) == -1) {
+    if ((i = libpbc_random_int(r)) == -1) {
         pc_req_log (r, "EMERG: get_pre_s_token: OpenSSL error");
     }
     pc_req_log (r, "get_pre_s_token: token is %d", i);
@@ -1386,11 +1417,11 @@ set_session_cookie (ngx_http_request_t * r,
         /* xxx it would be nice if the idle timeout has been disabled
            to avoid recomputing and resigning the cookie? */
         cookie =
-            libpbc_update_lastts (p, cfg->sectext, rr->cookie_data, ME(r),
+            libpbc_update_lastts (r, cfg->sectext, rr->cookie_data, ME(r),
                                   0, cfg->crypt_alg);
     } else {
         /* create a brand new cookie, initialized with the present time */
-        cookie = libpbc_get_cookie (p,
+        cookie = libpbc_get_cookie (r,
                                     cfg->sectext,
                                     rr->user.data,
                                     (u_char *) PBC_VERSION,
@@ -1420,7 +1451,7 @@ set_session_cookie (ngx_http_request_t * r,
            the first time since our cred cookie doesn't expire (which is poor
            and why we need cookie extensions) */
         /* encrypt */
-        if (libpbc_mk_priv (p, cfg->sectext, ME(r), 0, (char *) rr->cred_transfer.data,
+        if (libpbc_mk_priv (r, cfg->sectext, ME(r), 0, (char *) rr->cred_transfer.data,
                             rr->cred_transfer.len, &blob, &bloblen,
                             cfg->crypt_alg)) {
             pc_req_log(r,
@@ -1431,7 +1462,7 @@ set_session_cookie (ngx_http_request_t * r,
         /* base 64 */
         if (!res) {
             base64 = ngx_palloc(p, (bloblen + 3) / 3 * 4 + 1);
-            if (!libpbc_base64_encode (p, (u_char *) blob,
+            if (!libpbc_base64_encode (r, (u_char *) blob,
                                        (u_char *) base64,
                                        bloblen)) {
                 pc_req_log(r,
@@ -1718,7 +1749,7 @@ get_pre_s_from_cookie (ngx_http_request_t * r)
 
     pc_req_log(r, "retrieving a pre-session cookie");
     while (NULL != (cookie = get_cookie (r, PBC_PRE_S_COOKIENAME, ccnt))) {
-        cookie_data = libpbc_unbundle_cookie (p, cfg->sectext,
+        cookie_data = libpbc_unbundle_cookie (r, cfg->sectext,
                                               cookie, ME(r), 0,
                                               cfg->crypt_alg);
         if (cookie_data) break;
@@ -1889,7 +1920,7 @@ auth_failed_handler (ngx_http_request_t * r,
         }
 
         argst = ngx_pcalloc (p, (r->args.len + 3) / 3 * 4 + 1);
-        libpbc_base64_encode (p, r->args.data, (u_char *) argst, r->args.len);
+        libpbc_base64_encode (r, r->args.data, (u_char *) argst, r->args.len);
         pc_req_log(r,
                        "GET args before encoding length %d, string: %s",
                        r->args.len, r->args.data);
@@ -1939,7 +1970,7 @@ auth_failed_handler (ngx_http_request_t * r,
 
     if (cfg->use_post) {
         b64uri = ngx_pcalloc (p, (mr->uri.len + 3) / 3 * 4 + 1);
-        libpbc_base64_encode (p, mr->uri.data,
+        libpbc_base64_encode (r, mr->uri.data,
                               (u_char *) b64uri, mr->uri.len);
         pc_req_log (r,
                        "Post URI before encoding length %d, string: %s",
@@ -2015,7 +2046,7 @@ auth_failed_handler (ngx_http_request_t * r,
 
     e_g_req_contents =
         ngx_pcalloc (p, (g_req_contents.len + 3) / 3 * 4 + 1);
-    libpbc_base64_encode (p, g_req_contents.data,
+    libpbc_base64_encode (r, g_req_contents.data,
                           (u_char *) e_g_req_contents,
                           g_req_contents.len);
 
@@ -2023,7 +2054,7 @@ auth_failed_handler (ngx_http_request_t * r,
 
     if (!cfg->use_post) {
         pc_req_log (r, "making a pre-session cookie");
-        pre_s = (char *) libpbc_get_cookie (p,
+        pre_s = (char *) libpbc_get_cookie (r,
                                             cfg->sectext,
                                             (unsigned char *) "presesuser",
                                             (unsigned char *) PBC_VERSION,
@@ -2227,7 +2258,7 @@ pubcookie_user(ngx_http_request_t * r, ngx_pubcookie_loc_conf_t *cfg, ngx_pubcoo
     char *cookie;
     char *isssl = NULL;
     pbc_cookie_data *cookie_data;
-    pool *p = r->pool;
+    ngx_pool_t *p = r->pool;
     char *sess_cookie_name;
     int cred_from_trans;
     int pre_sess_from_cookie;
@@ -2272,7 +2303,7 @@ pubcookie_user(ngx_http_request_t * r, ngx_pubcookie_loc_conf_t *cfg, ngx_pubcoo
     cookie_data = NULL;
     while ((cookie = get_cookie(r, PBC_G_COOKIENAME, gcnt))
         && (cfg->use_post || get_cookie(r, PBC_PRE_S_COOKIENAME, 0))) {
-        cookie_data = libpbc_unbundle_cookie(p, cfg->sectext, cookie,
+        cookie_data = libpbc_unbundle_cookie(r, cfg->sectext, cookie,
                                              (char *) ap_get_server_name(r), 1, cfg->crypt_alg);
         if (cookie_data)
             break;
@@ -2294,7 +2325,7 @@ pubcookie_user(ngx_http_request_t * r, ngx_pubcookie_loc_conf_t *cfg, ngx_pubcoo
         while (NULL != (cookie = get_cookie(r, sess_cookie_name, scnt))) {
             int cookie_len = strlen(cookie);
             cookie_data =
-                libpbc_unbundle_cookie (p, cfg->sectext, cookie, ME(r), 0,
+                libpbc_unbundle_cookie (r, cfg->sectext, cookie, ME(r), 0,
                                         cfg->crypt_alg);
 
             if (cookie_data)
@@ -2307,7 +2338,7 @@ pubcookie_user(ngx_http_request_t * r, ngx_pubcookie_loc_conf_t *cfg, ngx_pubcoo
             ckfix = ngx_pnalloc(p, cookie_len + 3);
             strcpy(ckfix, cookie);
             strcat(ckfix, "==");
-            cookie_data = libpbc_unbundle_cookie (p, cfg->sectext, ckfix, ME(r), 0, cfg->crypt_alg);
+            cookie_data = libpbc_unbundle_cookie (r, cfg->sectext, ckfix, ME(r), 0, cfg->crypt_alg);
             if (cookie_data)
                 break;
 
@@ -2370,7 +2401,7 @@ pubcookie_user(ngx_http_request_t * r, ngx_pubcookie_loc_conf_t *cfg, ngx_pubcoo
                 }
             }
 
-            if (libpbc_check_exp(p, cookie_data->broken.create_ts, cfg->hard_exp) == PBC_FAIL) {
+            if (libpbc_check_exp(r, cookie_data->broken.create_ts, cfg->hard_exp) == PBC_FAIL) {
                 pc_req_log(r,
                            "S cookie hard expired; user: %s cookie timestamp: %d timeout: %d now: %d uri: %s\n",
                            cookie_data->broken.user,
@@ -2382,7 +2413,7 @@ pubcookie_user(ngx_http_request_t * r, ngx_pubcookie_loc_conf_t *cfg, ngx_pubcoo
             }
 
             if (cfg->inact_exp != -1 &&
-                libpbc_check_exp(p, cookie_data->broken.last_ts,
+                libpbc_check_exp(r, cookie_data->broken.last_ts,
                                   cfg->inact_exp) == PBC_FAIL) {
                 pc_req_log(r,
                            "S cookie inact expired; user: %s cookie timestamp %d timeout: %d now: %d uri: %s\n",
@@ -2537,7 +2568,7 @@ pubcookie_user(ngx_http_request_t * r, ngx_pubcookie_loc_conf_t *cfg, ngx_pubcoo
             return (DONE);
         }
 
-        if (libpbc_check_exp(p, cookie_data->broken.create_ts, PBC_GRANTING_EXPIRE) == PBC_FAIL) {
+        if (libpbc_check_exp(r, cookie_data->broken.create_ts, PBC_GRANTING_EXPIRE) == PBC_FAIL) {
             pc_req_log(r,
                        "pubcookie_user: G cookie expired by %ld; user: %s create: %ld uri: %s",
                        pbc_time(NULL) - cookie_data->broken.create_ts -
@@ -2576,7 +2607,7 @@ pubcookie_user(ngx_http_request_t * r, ngx_pubcookie_loc_conf_t *cfg, ngx_pubcoo
     }
 
     /* check version id */
-    if (libpbc_check_version(p, cookie_data) == PBC_FAIL) {
+    if (libpbc_check_version(r, cookie_data) == PBC_FAIL) {
         pc_req_log(r,
                    "pubcookie_user: wrong version id; module: %d cookie: %d uri: %s",
                    PBC_VERSION, cookie_data->broken.version);
@@ -2621,14 +2652,14 @@ pubcookie_user(ngx_http_request_t * r, ngx_pubcookie_loc_conf_t *cfg, ngx_pubcoo
         int res = 0;
 
         /* base64 decode cookie */
-        if (!libpbc_base64_decode(p, (u_char *) cookie, (u_char *) blob, &bloblen)) {
+        if (!libpbc_base64_decode(r, (u_char *) cookie, (u_char *) blob, &bloblen)) {
             pc_req_log(r, "credtrans: libpbc_base64_decode() failed");
             res = -1;
         }
 
         /* decrypt cookie. if credtrans is set, then it's from login server
            to me. otherwise it's from me to me. */
-        if (!res && libpbc_rd_priv(p, cfg->sectext, cred_from_trans ?
+        if (!res && libpbc_rd_priv(r, cfg->sectext, cred_from_trans ?
                                     ap_get_server_name(r) : NULL,
                                     cred_from_trans ? 1 : 0,
                                     blob, bloblen, &plain, &plainlen,
