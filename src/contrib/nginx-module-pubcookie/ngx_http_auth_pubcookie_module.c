@@ -1492,34 +1492,40 @@ add_out_header (ngx_http_request_t *r, const char *name, u_char *value)
 {
     ngx_str_t temp;
     ngx_table_elt_t *header;
-    int non_std;
+    int non_std = 0;
+    int setup_key = 0;
 
     if (0 == strcmp(name, "Expires")) {
-        non_std = 0;
         header = r->headers_out.expires;
     } else if (0 == strcmp(name, "Refresh")) {
-        non_std = 0;
         header = r->headers_out.refresh;
     } else {
-        header = ngx_list_push(&r->headers_out.headers);
-        if (NULL == header) {
-            pc_req_log(r, "cannot allocate memory for out header structure");
-            return NGX_ERROR;
-        }
         non_std = 1;
     }
 
-    temp.data = value;
-    temp.len = ngx_strlen(value);
-
     if (non_std) {
+        header = ngx_list_push(&r->headers_out.headers);
+        setup_key = 1;
+    } else if (NULL == header) {
+        header = ngx_pcalloc(r->pool, sizeof(ngx_table_elt_t));
+        setup_key = 1;
+    }
+
+    if (NULL == header) {
+        pc_req_log(r, "cannot allocate memory for header structure");
+        return NGX_ERROR;
+    }
+
+    if (setup_key) {
         header->hash = 1;
         header->key.data = (u_char *) name;
         header->key.len = strlen(name);
     }
 
+    header->value.len = temp.len = ngx_strlen(value);
+    temp.data = value;
     header->value.data = ngx_pstrdup(r->pool, &temp);
-    header->value.len = temp.len;
+
     if (NULL == header->value.data) {
         pc_req_log(r, "cannot allocate memory for out header value");
         return NGX_ERROR;
