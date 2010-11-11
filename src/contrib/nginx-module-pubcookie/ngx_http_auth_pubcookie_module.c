@@ -1278,17 +1278,6 @@ ap_os_escape_path (ngx_pool_t *p, const char *path, int partial)
  */
 
 /*
- * Send headers - so we can send direct content.  If we're 
- * doing the deferred method, append any headers we've accumulated
- * to the real header list.
- */
-static int
-flush_headers (ngx_http_request_t *r)
-{
-    return ngx_http_send_header(r);
-}
-
-/*
  * URL encode a base64 (deal with '+')
  */
 static char *
@@ -1490,7 +1479,6 @@ check_end_session (ngx_http_request_t * r)
 static int
 add_out_header (ngx_http_request_t *r, const char *name, u_char *value)
 {
-    ngx_str_t temp;
     ngx_table_elt_t *header;
     int non_std = 0;
     int setup_key = 0;
@@ -1522,9 +1510,10 @@ add_out_header (ngx_http_request_t *r, const char *name, u_char *value)
         header->key.len = strlen(name);
     }
 
-    header->value.len = temp.len = ngx_strlen(value);
-    temp.data = value;
-    header->value.data = ngx_pstrdup(r->pool, &temp);
+    header->value.len = ngx_strlen(value);
+    header->value.data = ngx_pcalloc(r->pool, header->value.len + 1);
+    ngx_memcpy(header->value.data, value, header->value.len + 1);
+    /*pc_req_log(r, "new_header: name=(%s) value=(%s)", header->key.data, header->value.data);*/
 
     if (NULL == header->value.data) {
         pc_req_log(r, "cannot allocate memory for out header value");
@@ -1558,7 +1547,7 @@ static int
 set_no_cache_headers (ngx_http_request_t * r)
 {
     int rc = NGX_OK;
-    u_char buf[32];
+    u_char buf[32] = {0};
     ngx_http_time(buf, r->start_sec);
     rc |= add_out_header(r, "Expires", buf);
     rc |= add_out_header(r, "Cache-Control", (u_char *) "no-store, no-cache, must-revalidate");
@@ -1585,7 +1574,7 @@ set_session_cookie (ngx_http_request_t * r,
                     ngx_pubcookie_req_t * rr, int firsttime)
 {
     ngx_pool_t *p = r->pool;
-    u_char *new_cookie = ngx_palloc(p, PBC_4K);
+    u_char *new_cookie = ngx_pcalloc(p, PBC_4K);
     u_char *cookie;
 
     if (firsttime != 1) {
@@ -1614,7 +1603,6 @@ set_session_cookie (ngx_http_request_t * r,
                                                         PBC_S_COOKIENAME,
                                                         (u_char *) appid(r)),
                               cookie, "/", secure_cookie);
-
     add_set_cookie(r, new_cookie);
 
     if (firsttime && rr->cred_transfer.data) {
@@ -1671,7 +1659,7 @@ clear_granting_cookie (ngx_http_request_t * r)
 {
     ngx_pubcookie_loc_t *cfg = ngx_http_get_module_loc_conf(r, ngx_pubcookie_module);
     ngx_pubcookie_srv_t *scfg = ngx_http_get_module_srv_conf(r, ngx_pubcookie_module);
-    u_char *new_cookie = ngx_palloc(r->pool, PBC_4K);
+    u_char *new_cookie = ngx_pcalloc(r->pool, PBC_4K);
 
     if (scfg->use_post)
         ngx_sprintf(new_cookie, "%s=; path=/; expires=%s;%s",
@@ -1696,7 +1684,7 @@ clear_granting_cookie (ngx_http_request_t * r)
 static void
 clear_transfer_cookie (ngx_http_request_t * r)
 {
-    u_char *new_cookie = ngx_palloc(r->pool, PBC_4K);
+    u_char *new_cookie = ngx_pcalloc(r->pool, PBC_4K);
 
     ngx_sprintf(new_cookie,
                               "%s=; domain=%s; path=/; expires=%s;%s",
@@ -1714,7 +1702,7 @@ clear_transfer_cookie (ngx_http_request_t * r)
 static void
 clear_pre_session_cookie (ngx_http_request_t * r)
 {
-    u_char *new_cookie = ngx_palloc(r->pool, PBC_4K);
+    u_char *new_cookie = ngx_pcalloc(r->pool, PBC_4K);
 
     ngx_sprintf(new_cookie,
                               "%s=; path=/; expires=%s;%s",
@@ -1734,7 +1722,7 @@ clear_session_cookie (ngx_http_request_t * r)
     if (NULL == rr)
         return NGX_OK;
 
-    new_cookie = ngx_palloc(r->pool, PBC_4K);
+    new_cookie = ngx_pcalloc(r->pool, PBC_4K);
     ngx_sprintf(new_cookie,
                               "%s=%s; path=/; expires=%s;%s",
                               make_session_cookie_name (r->pool,
@@ -1797,7 +1785,7 @@ do_end_session_redirect (ngx_http_request_t * r,
                            PBC_GETVAR_APPSRVID,
                            appsrvid(r));
 
-    rr->msg.data = ngx_pnalloc(r->pool, ngx_strlen(redirect_html) + ngx_strlen(refresh) + 4);
+    rr->msg.data = ngx_pcalloc(r->pool, ngx_strlen(redirect_html) + ngx_strlen(refresh) + 4);
     if (NULL == rr->msg.data)
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     ngx_sprintf(rr->msg.data, redirect_html, refresh);
@@ -1832,7 +1820,7 @@ stop_the_show (ngx_http_request_t *r, ngx_pubcookie_loc_t *cfg, ngx_pubcookie_re
     if (NULL == msg)
         msg = (u_char *) "";
     admin = (u_char *) "postmaster@this.server";
-    rr->msg.data = ngx_pnalloc(r->pool, ngx_strlen(stop_html) + ngx_strlen(admin) + ngx_strlen(msg) + 10);
+    rr->msg.data = ngx_pcalloc(r->pool, ngx_strlen(stop_html) + ngx_strlen(admin) + ngx_strlen(msg) + 10);
     if (NULL == rr->msg.data) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
@@ -2058,10 +2046,10 @@ auth_failed_handler (ngx_http_request_t * r,
                      ngx_pubcookie_req_t *rr)
 {
     ngx_pool_t *p = r->pool;
-    char *refresh = ngx_palloc (p, PBC_1K);
-    char *pre_s = ngx_palloc (p, PBC_1K);
-    char *pre_s_cookie = ngx_palloc (p, PBC_1K);
-    char *g_req_cookie = ngx_palloc (p, PBC_4K);
+    char *refresh = ngx_pcalloc (p, PBC_1K);
+    char *pre_s = ngx_pcalloc (p, PBC_1K);
+    char *pre_s_cookie = ngx_pcalloc (p, PBC_1K);
+    char *g_req_cookie = ngx_pcalloc (p, PBC_4K);
     ngx_str_t g_req_contents;
     char *e_g_req_contents;
     #define get_hdr_in(R,H) (R->headers_in.H ? str2charp(R->pool, &R->headers_in.H->value) : NULL)
@@ -2082,7 +2070,7 @@ auth_failed_handler (ngx_http_request_t * r,
     char *b64uri;
 
     pc_req_log(r, "auth_failed_handler: hello");
-    g_req_contents.data = ngx_palloc (p, g_req_contents.len = PBC_4K);
+    g_req_contents.data = ngx_pcalloc (p, PBC_4K);
 
     if (r->main != r) {
         pc_req_log(r, " .. in subrequest: retuning noauth");
@@ -2206,7 +2194,7 @@ auth_failed_handler (ngx_http_request_t * r,
                  PBC_GETVAR_PRE_SESS_TOK,
                  pre_sess_tok,
                  PBC_GETVAR_FLAG, misc_flag);
-    /*pc_req_log(r, "REQ:%s", g_req_contents.data);*/
+    g_req_contents.len = ngx_strlen(g_req_contents.data);
 
     if (cfg->addl_requests.data) {
         pc_req_log (r,
@@ -2258,7 +2246,7 @@ auth_failed_handler (ngx_http_request_t * r,
                                             appid(r), ME(r), 0,
                                             scfg->crypt_alg);
 
-        pre_s_cookie = ngx_palloc(p, PBC_4K);
+        pre_s_cookie = ngx_pcalloc(p, PBC_4K);
         ngx_snprintf((u_char *) pre_s_cookie, PBC_4K - 1,
                                     "%s=%s; path=%s;%s",
                                     PBC_PRE_S_COOKIENAME,
@@ -2320,28 +2308,37 @@ auth_failed_handler (ngx_http_request_t * r,
 #endif
     }
 
-    flush_headers (r);
+    /*flush_headers (r); will be done later*/
 
     /* If we're using the post method, just bundle everything
        in a post to the login server. */
 
     if (scfg->use_post) {
-        u_char cp[12];
+        u_char cp[12] = {0};
         if ((port == 80 || port == 443) && !scfg->behind_proxy)
             cp[0] = '\0';
         else
             ngx_sprintf (cp, ":%d", port);
-        rr->msg.data = ngx_palloc(p, PBC_4K);
+
+        rr->msg.data = ngx_pcalloc(p, PBC_4K);
+
         ngx_snprintf(rr->msg.data, PBC_4K - 1,
-                    post_request_html, scfg->login.data,
-                    e_g_req_contents, encode_get_args(r, post_data, 1),
-                    ap_get_server_name (r), cp, scfg->post_reply_url.data);
+                    post_request_html,
+                    str2charp(p, &scfg->login),
+                    e_g_req_contents,
+                    encode_get_args(r, post_data, 1),
+                    ap_get_server_name(r),
+                    cp,
+                    str2charp(p, &scfg->post_reply_url));
 
     } else if (ctype && (tenc || lenp || r->method == NGX_HTTP_POST)) {
-        rr->msg.data = ngx_palloc(p, PBC_4K);
+        rr->msg.data = ngx_pcalloc(p, PBC_4K);
         ngx_snprintf (rr->msg.data, PBC_4K - 1,
-                    get_post_request_html, scfg->login.data,
-                    encode_get_args(r, post_data, 1), scfg->login.data, PBC_WEBISO_LOGO,
+                    get_post_request_html,
+                    str2charp(p, &scfg->login),
+                    encode_get_args(r, post_data, 1),
+                    str2charp(p, &scfg->login),
+                    PBC_WEBISO_LOGO,
                     PBC_POST_NO_JS_BUTTON);
 
     } else {
@@ -2349,7 +2346,7 @@ auth_failed_handler (ngx_http_request_t * r,
 /* warning, this will break some browsers */
         rr->msg.data = nullpage_html;
 #else
-        rr->msg.data = ngx_palloc(p, ngx_strlen(redirect_html) + ngx_strlen(refresh) + 8);
+        rr->msg.data = ngx_pcalloc(p, ngx_strlen(redirect_html) + ngx_strlen(refresh) + 8);
         ngx_sprintf(rr->msg.data, redirect_html, refresh);
 #endif
     }
@@ -2397,9 +2394,8 @@ pubcookie_user_hook (ngx_http_request_t * r)
             stop_the_show(r, cfg, rr);
             return DONE;
         } else if (rr->failed == PBC_BAD_USER) {
-            static ngx_str_t unauth_user = ngx_string("Unauthorized user.");
             pc_req_log(r, " .. user_hook: bad user");
-            rr->msg.data = ngx_pstrdup(r->pool, &unauth_user);
+            rr->msg.data = (u_char *) "Unauthorized user.";
             return DONE;
         }
         auth_failed_handler(r, cfg, scfg, rr);
@@ -2959,12 +2955,23 @@ ngx_pubcookie_authz_handler(ngx_http_request_t *r)
         u_char *msg = rr->msg.data;
         ngx_buf_t *b;
         ngx_chain_t out;
-        int len;
+        int len = ngx_strlen(msg);
+
+        r->headers_out.status = NGX_HTTP_OK;
+        r->headers_out.content_length_n = len;
+        r->headers_out.last_modified_time = r->start_sec;
 
         r->headers_out.content_type = pbc_content_type;
         r->headers_out.content_type_len = pbc_content_type.len;
-        flush_headers(r);
-        len = ngx_strlen(msg);
+
+        /*
+         * Send headers - so we can send direct content.  If we're 
+         * doing the deferred method, append any headers we've accumulated
+         * to the real header list.
+         */
+        /*flush_headers(r);*/
+        ngx_http_send_header(r);
+
         b = ngx_create_temp_buf(r->pool, len);
         if (NULL == b) {
             return NGX_HTTP_INTERNAL_SERVER_ERROR;
