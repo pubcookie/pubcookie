@@ -467,6 +467,14 @@ static ngx_command_t  ngx_pubcookie_commands[] = {
       offsetof(ngx_pubcookie_loc_t, noprompt),
       NULL },
 
+    /* "End application session and possibly login session" */
+    { ngx_string("pubcookie_end_session"),
+      NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_str_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_pubcookie_loc_t, end_session),
+      NULL },
+
 #if 0
     /* "Do not blank cookies.". DEPRECATED in favour of pubcookie_no_obscure_cookies */
     { ngx_string("pubcookie_no_blank"),
@@ -508,14 +516,6 @@ static ngx_command_t  ngx_pubcookie_commands[] = {
       set_session_reauth,
       NGX_HTTP_LOC_CONF_OFFSET,
       offsetof(ngx_pubcookie_loc_t, session_reauth),
-      NULL },
-
-    /* "End application session and possibly login session" */
-    { ngx_string("pubcookie_end_session"),
-      NGX_HTTP_LOC_CONF|NGX_CONF_1MORE/*AP_INIT_RAW_ARGS*/,
-      set_end_session,
-      NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_pubcookie_loc_t, end_session),
       NULL },
 
     /* "Send the following options to the login server along with authentication requests" */
@@ -1450,7 +1450,7 @@ check_end_session (ngx_http_request_t * r)
     ngx_pubcookie_loc_t *cfg = ngx_http_get_module_loc_conf(r, ngx_pubcookie_module);
     ngx_pool_t *p = r->pool;
     int ret = 0;
-    char *end_session = (char *) cfg->end_session.data;
+    char *end_session = str2charp(p, &cfg->end_session);
     char *word;
 
     /* check list of end session args */
