@@ -123,7 +123,7 @@ static ngx_str_t pbc_content_type = ngx_string("text/html; charset=utf-8");
 
 #define SET_C_LETTER(c,a,b) (*(c)++ = '%', *(c)++ = (a), *(c)++ = (b))
 
-#define ngx_pubcookie_module ngx_http_auth_pubcookie_module
+#define ngx_pubcookie_module ngx_http_pubcookie_module
 
 #define ngx_str_assign(a,s) do { u_char *_p = (u_char *)(s); (a).len = ngx_strlen(_p); (a).data = _p; } while(0)
 
@@ -427,6 +427,14 @@ static ngx_command_t  ngx_pubcookie_commands[] = {
       offsetof(ngx_pubcookie_srv_t, egd_socket),
       NULL },
 
+    /* "Set post response URL. Def = /PubCookie.reply" */
+    { ngx_string("pubcookie_post_url"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_str_slot,
+      NGX_HTTP_SRV_CONF_OFFSET,
+      offsetof(ngx_pubcookie_srv_t, post_reply_url),
+      NULL },
+
     /* "Set login method (GET/POST). Def = GET" */
     { ngx_string("pubcookie_login_method"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
@@ -548,14 +556,6 @@ static ngx_command_t  ngx_pubcookie_commands[] = {
       pubcookie_set_keyed_directive_iterate2,
       NGX_HTTP_LOC_CONF_OFFSET,
       offsetof(ngx_pubcookie_loc_t, dummy),
-      NULL },
-
-    /* "Set post response URL. Def = /PubCookie.reply" */
-    { ngx_string("pubcookie_post_url"),
-      NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
-      pubcookie_set_post_url,
-      NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_pubcookie_loc_t, post_reply_url),
       NULL },
 
     /* "Set to leave credentials in place after cleanup" */
@@ -1020,7 +1020,7 @@ ngx_pubcookie_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child)
     ngx_conf_merge_value(scfg->use_post, sprv->use_post, 0);
     ngx_conf_merge_uint_value(scfg->crypt_alg, sprv->crypt_alg, PBC_DEF_CRYPT);
     ngx_conf_merge_value(scfg->behind_proxy, sprv->behind_proxy, 0);
-    ngx_conf_merge_str_value(scfg->post_reply_url, sprv->post_reply_url, "PubCookie.reply");
+    ngx_conf_merge_str_value(scfg->post_reply_url, sprv->post_reply_url, "/PubCookie.reply");
 
     for (i = 0; pbc_cfg_str_fields[i].name != NULL; i++) {
         int off = pbc_cfg_str_fields[i].offset;
@@ -2245,6 +2245,11 @@ auth_failed_handler (ngx_http_request_t * r,
                                             (unsigned char *) appsrvid (r),
                                             appid(r), ME(r), 0,
                                             scfg->crypt_alg);
+        if (NULL == pre_s) {
+            rr->stop_message.data = (u_char *) "Failure making pre-session cookie";
+            stop_the_show(r, cfg, rr);
+            return (NGX_OK);
+        }
 
         pre_s_cookie = ngx_pcalloc(p, PBC_4K);
         ngx_snprintf((u_char *) pre_s_cookie, PBC_4K - 1,
@@ -2329,7 +2334,8 @@ auth_failed_handler (ngx_http_request_t * r,
                     encode_get_args(r, post_data, 1),
                     ap_get_server_name(r),
                     cp,
-                    str2charp(p, &scfg->post_reply_url));
+                    str2charp(p, &scfg->post_reply_url) + 1 /* skip first slash */
+                    );
 
     } else if (ctype && (tenc || lenp || r->method == NGX_HTTP_POST)) {
         rr->msg.data = ngx_pcalloc(p, PBC_4K);
@@ -2374,7 +2380,7 @@ pubcookie_user_hook (ngx_http_request_t * r)
     char creds;
 
     /* pass if the request is for our post-reply */
-    if (0 == ngx_strcasecmp (r->uri.data + 1, scfg->post_reply_url.data))
+    if (0 == ngx_strcasecmp (r->uri.data, scfg->post_reply_url.data))
         return NGX_OK;
 
     /* get pubcookie creds or bail if not a pubcookie auth_type */
@@ -2928,7 +2934,7 @@ ngx_pubcookie_authz_handler(ngx_http_request_t *r)
     }
 
     /* pass if the request is our post-reply */
-    if (0 == ngx_strcasecmp(r->uri.data + 1, scfg->post_reply_url.data)) {
+    if (0 == ngx_strcasecmp(r->uri.data, scfg->post_reply_url.data)) {
         return NGX_OK;
     }
 
