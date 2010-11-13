@@ -44,18 +44,26 @@ typedef ngx_http_request_t pool;
 
 #include "html.h"
 
-#define PBC_LLEVEL NGX_LOG_WARN
+static int super_debug = 0;
 
-#define pc_req_log(r,args...) ngx_log_error_core(PBC_LLEVEL,(r)->connection->log,0,args)
-#define pc_pool_log(p,args...) ngx_log_error_core(PBC_LLEVEL,(p)->log,0,args)
-#define pc_cf_log(c,args...) ngx_log_error_core(PBC_LLEVEL,(c)->log,0,args)
-#define pc_log_log(l,args...) ngx_log_error_core(PBC_LLEVEL,(l),0,args)
-#define PPP ngx_log_error_core(PBC_LLEVEL,p->log,0,"[[[((( %d )))]]]",__LINE__);
-#define RRR ngx_log_error_core(PBC_LLEVEL,r->connection->log,0,"[[[((( %d )))]]]",__LINE__);
-#define LLL ngx_log_error_core(PBC_LLEVEL,log_of(p),0,"[[[((( %d ))) %s ]]]",__LINE__,__FILE__);
+#define PBC_LLEVEL (super_debug?NGX_LOG_WARN:NGX_LOG_DEBUG)
 
-#define pbc_log_activity(p,l,args...) ngx_log_error_core(PBC_LLEVEL,log_of(p),0,args);
-#define pbc_vlog_activity(p,l,f,va) ngx_log_error_core(PBC_LLEVEL,log_of(p),0,"libpbc: %s",f);
+#define pc_any_log(l,v,args...) \
+        do { int _v_ = PBC_LLEVEL; ngx_log_t *_l_ = (l); \
+            if (_l_->log_level >= _v_) { \
+                ngx_log_error_core(_v_,_l_,0,args); \
+            } \
+        } while(0)
+#define pc_req_log(r,args...) pc_any_log((r)->connection->log,0,args)
+#define pc_pool_log(p,args...) pc_any_log((p)->log,0,args)
+#define pc_cf_log(c,args...) pc_any_log((c)->log,0,args)
+#define pc_log_log(l,args...) pc_any_log((l),0,args)
+#define PPP pc_any_log(p->log,0,"[[[((( %d )))]]]",__LINE__);
+#define RRR pc_any_log(r->connection->log,0,"[[[((( %d )))]]]",__LINE__);
+#define LLL pc_any_log(log_of(p),0,"[[[((( %d ))) %s ]]]",__LINE__,__FILE__);
+
+#define pbc_log_activity(p,l,args...) pc_any_log(log_of(p),0,args);
+#define pbc_vlog_activity(p,l,f,va) pc_any_log(log_of(p),0,"libpbc: %s",f);
 
 static ngx_log_t * log_of (void *p);
 static ngx_pool_t * pool_of (void *p);
@@ -244,6 +252,7 @@ static char *pubcookie_set_crypt (ngx_conf_t *cf, ngx_command_t *cmd, void *conf
 static char *pubcookie_set_appid (ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static char *pubcookie_set_appsrvid (ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static char *pubcookie_set_noprompt (ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static char *pubcookie_set_super_debug (ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 static char pubcookie_auth_type (ngx_http_request_t * r);
 
@@ -353,6 +362,14 @@ static ngx_command_t  ngx_pubcookie_commands[] = {
       pubcookie_set_hard_exp,
       NGX_HTTP_LOC_CONF_OFFSET,
       offsetof(ngx_pubcookie_loc_t, hard_exp),
+      NULL },
+
+    /* "Set super debugging." */
+    { ngx_string("pubcookie_super_debug"),
+      NGX_HTTP_MAIN_CONF|NGX_CONF_FLAG,
+      pubcookie_set_super_debug,
+      0,
+      0,
       NULL },
 
     /* "Set the login page for PubCookies." */
@@ -687,6 +704,29 @@ libpbc_config_getstring(pool *ptr, const char *name, const char *defval)
     return defval;
 }
 
+/**
+ * used to give more debugging
+ * @param cmd - command record
+ * @param mconfig - module configuration
+ * @param f - int
+ * @returns NULL 
+ */
+static char *
+pubcookie_set_super_debug (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+{
+    ngx_str_t *value = cf->args->elts;
+
+    if (0 == ngx_strcasecmp(value[1].data, (u_char *) "on")) {
+        super_debug = 1;
+    } else if (0 == ngx_strcasecmp(value[1].data, (u_char *) "off")) {
+        super_debug = 0;
+    } else {
+        return "Invalid value in pubcookie_super_debug";
+    }
+
+    return NGX_CONF_OK;
+}
+
 static char *
 pubcookie_set_inact_exp (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
@@ -902,7 +942,6 @@ pubcookie_set_noprompt (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     return NGX_CONF_OK;
 }
-
 
 static void *
 ngx_pubcookie_create_loc_conf(ngx_conf_t *cf)
