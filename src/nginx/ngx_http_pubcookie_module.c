@@ -256,6 +256,7 @@ static char *pubcookie_set_super_debug (ngx_conf_t *cf, ngx_command_t *cmd, void
 
 static char pubcookie_auth_type (ngx_http_request_t * r);
 
+static int pubcookie_post_handler (ngx_http_request_t * r, ngx_pubcookie_loc_t *cfg, ngx_pubcookie_srv_t *scfg, ngx_pubcookie_req_t *rr);
 static int pubcookie_user (ngx_http_request_t * r, ngx_pubcookie_loc_t *cfg, ngx_pubcookie_srv_t *scfg, ngx_pubcookie_req_t *rr);
 static int pubcookie_user_hook (ngx_http_request_t * r);
 
@@ -1526,6 +1527,8 @@ add_out_header (ngx_http_request_t *r, const char *name, u_char *value)
         header = r->headers_out.expires;
     } else if (0 == strcmp(name, "Refresh")) {
         header = r->headers_out.refresh;
+    } else if (0 == strcmp(name, "Location")) {
+        header = r->headers_out.location;
     } else {
         non_std = 1;
     }
@@ -2419,19 +2422,20 @@ pubcookie_user_hook (ngx_http_request_t * r)
     char creds;
 
     /* pass if the request is for our post-reply */
-    if (0 == ngx_strcasecmp (r->uri.data, scfg->post_reply_url.data))
-        return NGX_OK;
+    if (0 == ngx_strcasecmp (r->uri.data, scfg->post_reply_url.data)) {
+        return pubcookie_post_handler(r, cfg, scfg, rr);
+    }
 
     /* get pubcookie creds or bail if not a pubcookie auth_type */
-    if ((creds = pubcookie_auth_type (r)) == PBC_CREDS_NONE)
+    if ((creds = pubcookie_auth_type(r)) == PBC_CREDS_NONE)
         return NGX_DECLINED;
 
     /* pass if the request is for favicon.ico */
-    if (0 == ngx_strncasecmp (r->uri.data, (u_char *) "/favicon.ico", 12))
+    if (0 == ngx_strncasecmp(r->uri.data, (u_char *) "/favicon.ico", 12))
         return NGX_OK;
 
     rr->creds = creds;
-    s = pubcookie_user (r, cfg, scfg, rr);
+    s = pubcookie_user(r, cfg, scfg, rr);
     if (rr->failed) {
         pc_req_log(r, " .. user_hook: user failed");
         if (rr->failed == PBC_BAD_G_STATE) {
@@ -3061,7 +3065,6 @@ ngx_pubcookie_authz_handler(ngx_http_request_t *r)
 
     /* Check user & password using PAM */
     return ngx_pubcookie_authenticate(r, rr, conf);
-}
 #endif
 
 
@@ -3137,39 +3140,138 @@ ngx_pubcookie_init(ngx_conf_t *cf)
 /*
  *  POST handler
  */
-#if 0
-#define BASIC_REALM_C "Basic realm=\""
-static char *
-ngx_pubcookie_post_handler_proc(ngx_conf_t *cf, void *post, void *data)
+
+static int
+pubcookie_post_handler (ngx_http_request_t * r,
+                        ngx_pubcookie_loc_t *cfg,
+                        ngx_pubcookie_srv_t *scfg,
+                        ngx_pubcookie_req_t *rr)
 {
-    ngx_str_t  *realm = data;
+    ngx_pool_t *p = r->pool;
+    table *args = ap_make_table (r->pool, 5);
+    const char *greply, *creply, *pdata;
+    char *arg;
+    char *a;
+    const char *lenp = ap_table_get (r->headers_in, "Content-Length");
+    char *post_data;
+    char *gr_cookie, *cr_cookie;
+    const char *r_url;
+    pool *p = r->pool;
 
-    size_t   len;
-    u_char  *basic, *p;
+    pc_req_log(r, "login_reply_handler: hello");
 
-    if (ngx_strcmp(realm->data, "off") == 0) {
-        realm->len = 0;
-        realm->data = blank_str.data;
+    set_no_cache_headers (r);
 
-        return NGX_CONF_OK;
+    /* Get the request data */
+
+    if (r->args) {
+        arg = ap_pstrdup (p, r->args);
+        scan_args (r, args, arg);
+    }
+    if (lenp) {
+        int post_data_len;
+        if (((post_data_len = strtol (lenp, NULL, 10)) > 0) &&
+            ((post_data = get_post_data (r, post_data_len)))) {
+            scan_args (r, args, post_data);
+        }
     }
 
-    len = sizeof(BASIC_REALM_C) - 1 + realm->len + 1;
+    greply = ap_table_get (args, PBC_G_COOKIENAME);
+    if (!greply) {
+        /* Send out bad call error */
+        rr->stop_message = ap_pstrdup (p, "No granting reply");
+        stop_the_show (r, scfg, cfg, rr);
+        return (OK);
+    }
+    verify_base64(r, (char*)greply);
 
-    if (NULL == (basic = ngx_palloc(cf->pool, len))) {
-        return NGX_CONF_ERROR;
+    /* see if we do GET or POST */
+    pdata = ap_table_get (args, PBC_GETVAR_POST_STUFF);
+    if (!pdata) pdata = "";
+
+    if (!(r_url=verify_url(r, (char*)ap_table_get (args, "redirect_url"), (*pdata)?1:0))) {
+        /* Send out bad call error */
+        ap_log_rerror (PC_LOG_ERR, r,
+                       "bad redirect url: %s", r_url);
+        rr->stop_message = ap_pstrdup (p, "Invalid relay URL");
+        stop_the_show (r, scfg, cfg, rr);
+        return (OK);
     }
 
-    p = ngx_cpymem(basic, BASIC_REALM_C, sizeof(BASIC_REALM_C) - 1);
-    p = ngx_cpymem(p, realm->data, realm->len);
-    *p = '"';
+    creply = ap_table_get (args, PBC_CRED_TRANSFER_COOKIENAME);
+    verify_base64(r, (char*)creply);
 
-    realm->len = len;
-    realm->data = basic;
+    /* Build the redirection */
 
-    return NGX_CONF_OK;
+    gr_cookie = ap_psprintf (p, "%s=%s; path=/;%s",
+                             PBC_G_COOKIENAME, greply, secure_cookie);
+    ap_table_add (HDRS_OUT, "Set-Cookie", gr_cookie);
+
+    if (creply) {
+        cr_cookie = ap_psprintf (p, "%s=%s; domain=%s; path=/;%s",
+                                 PBC_CRED_TRANSFER_COOKIENAME, creply,
+                                 PBC_ENTRPRS_DOMAIN, secure_cookie);
+        ap_table_add (HDRS_OUT, "Set-Cookie", cr_cookie);
+    }
+
+    /* get the query string */
+    a = (char*) ap_table_get (args, "get_args");
+
+    if (a && *a) {
+        arg = ap_psprintf (p, "%s?%s", r_url, encode_get_args(r, (char*)a, 0));
+    } else {
+        arg = (char*) r_url;
+    }
+    /* make sure there are no newlines in the redirect location */
+    if (a=strchr(arg,'\n')) *a = '\0';
+    if (a=strchr(arg,'\r')) *a = '\0';
+
+
+    if (*pdata) {
+        char *v, *t;
+        int needclick = 0;
+
+        flush_headers (r);
+
+        post_data = ap_pstrdup (p, pdata);
+        if (strstr (post_data, "submit=")) needclick = 1;
+        ap_log_rerror (PC_LOG_DEBUG, r,
+                       "relay is post, click=%d", needclick);
+
+        /* send post form with original elements */
+        ap_rprintf (r, post_reply_1_html,
+                    needclick ? POST_REPLY_CLICK : POST_REPLY_SUBMIT,
+                    arg);
+
+        while (post_data) {
+            if (a = strchr (post_data, '&')) *a++ = '\0';
+            if (*post_data) {
+                int na;
+
+                if (v = strchr (post_data, '=')) *v++ = '\0';
+                for (t = v; t&&*t; t++) if (*t == '+') *t = ' ';
+                decode_data (post_data);
+                decode_data (v);
+
+                ap_rprintf (r, post_reply_arg_html, encode_data(r, post_data), encode_data(r, v)); 
+
+            }
+            post_data = a;
+        }
+
+        ap_rprintf (r, post_reply_2_html);
+
+    } else {                    /* do a get */
+        /* Apache uses the error headers when we return a redirect */
+        add_set_cookie(r, gr_cookie);
+        if (creply)
+            add_set_cookie(r, cr_cookie);
+        add_out_heaaader("Location", arg);
+        return NGX_HTTP_MOVED_TEMPORARILY;
+    }
+
+    return (OK);
 }
-#endif
 
 /* SVN Id: $Id$ */
 
