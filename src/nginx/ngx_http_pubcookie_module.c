@@ -44,7 +44,11 @@ typedef ngx_http_request_t pool;
 
 #include "html.h"
 
-static int super_debug = 0;
+/***********************************
+ * Logging
+ */
+
+static int super_debug = 1;
 
 #define PBC_LLEVEL (super_debug?NGX_LOG_WARN:NGX_LOG_DEBUG)
 
@@ -65,9 +69,15 @@ static int super_debug = 0;
 #define pbc_log_activity(p,l,args...) pc_any_log(log_of(p),0,args);
 #define pbc_vlog_activity(p,l,f,va) pc_any_log(log_of(p),0,"libpbc: %s",f);
 
+#define ap_log_rerror(v,r,args...) pc_any_log((r)->connection->log,0,args)
+
 static ngx_log_t * log_of (void *p);
 static ngx_pool_t * pool_of (void *p);
 static char * str2charp (ngx_pool_t *pool, ngx_str_t *nsp);
+
+/***********************************
+ * Pubcookie library stubs
+ */
 
 #undef pbc_malloc
 #undef pbc_free
@@ -133,7 +143,12 @@ static ngx_str_t pbc_content_type = ngx_string("text/html; charset=utf-8");
 
 #define ngx_pubcookie_module ngx_http_pubcookie_module
 
-#define ngx_str_assign(a,s) do { u_char *_p = (u_char *)(s); (a).len = ngx_strlen(_p); (a).data = _p; } while(0)
+#define ngx_str_assign(a,s) \
+    ({ \
+        u_char *_p = (u_char *)(s); \
+        (a).len = ngx_strlen(_p); \
+        (a).data = _p; \
+    })
 
 static ngx_str_t blank_str = ngx_string("");
 
@@ -142,6 +157,10 @@ static ngx_str_t blank_str = ngx_string("");
 
 #define PBC_LOC_SIGNATURE 0x0B100C10
 #define PBC_SRV_SIGNATURE 0x0B200C20
+
+/***********************************
+ * Data types
+ */
 
 /* Module configuration struct */
 typedef struct {
@@ -165,6 +184,7 @@ typedef struct
     ngx_log_t *log;
     ngx_pool_t *pool;
     security_context *sectext;
+    int locations;
     /* === config list === */
     ngx_str_t enterprise_domain;
     ngx_str_t keydir;
@@ -176,7 +196,7 @@ typedef struct
     ngx_str_t egd_socket;
     ngx_str_t login;
     /* === server part === */
-    ngx_str_t post_reply_url;
+    ngx_str_t post_url;
     ngx_str_t appsrvid;
     int dirdepth;
     int noblank;
@@ -217,23 +237,60 @@ static struct {
     { "crypt_key",          offsetof(ngx_pubcookie_srv_t, crypt_key) },
     { "login_uri",          offsetof(ngx_pubcookie_srv_t, login) },
     { "keydir",             offsetof(ngx_pubcookie_srv_t, keydir) },
-    { "__appsrvid",         offsetof(ngx_pubcookie_srv_t, appsrvid) },
-    { "__egd_socket",       offsetof(ngx_pubcookie_srv_t, egd_socket) },
-    { "__post_reply_url",   offsetof(ngx_pubcookie_srv_t, post_reply_url) },
+    { "appsrvid",           offsetof(ngx_pubcookie_srv_t, appsrvid) },
+    { "egd_socket",         offsetof(ngx_pubcookie_srv_t, egd_socket) },
+    { "post_url",           offsetof(ngx_pubcookie_srv_t, post_url) },
     { NULL, 0 }
 };
+
+/***********************************
+ * APR helpers
+ */
+
+#define request_rec ngx_http_request_t
+#define ap_palloc ngx_palloc
+#define ap_table_add(tbl,hdr,val) add_out_header(r,hdr,val)
+
+#define ap_rprintf(r,args...) \
+    ({ \
+        ngx_http_request_t * _r = (r); \
+        ngx_pubcookie_req_t * _rr = ngx_http_get_module_ctx(_r_, ngx_pubcookie_module); \
+        u_char *_p; \
+        int _n = 0; \
+        _p = _rr->stop_message.data; \
+        if (_p) \
+            _n = ngx_strlen(_p); \
+        else \
+            _p = _rr->stop_message.data = ngx_palloc(_r->pool, PBC_4K); \
+        *(ngx_snprintf(_p + _n, PBC_4K - _n - 1, args)) = '\0'; \
+        (_p); \
+    })
+
+
+#define ap_pstrdup(p,s) \
+    ({ \
+        u_char *_s = (u_char *) (s); \
+        u_char *_d; \
+        int _n; \
+        if (NULL == _s) { \
+            _d = (NULL); \
+        } else { \
+            _n = ngx_strlen(_s) + 1; \
+            _d = ngx_pnalloc((p), _n); \
+            if (_d)  ngx_memcpy(_d, _s, _n); \
+        } \
+        (_d); \
+    })
 
 /***********************************
  * Prototypes
  */
 
-#if 0
-static ngx_int_t ngx_pubcookie_authenticate (ngx_http_request_t *r, ngx_pubcookie_req_t *rr, void *conf);
-static ngx_int_t ngx_pubcookie_set_realm (ngx_http_request_t *r, ngx_str_t *realm);
-static char *ngx_pubcookie_post_handler_proc (ngx_conf_t *cf, void *post, void *data);
-static ngx_conf_post_handler_pt  ngx_pubcookie_p = ngx_pubcookie_post_handler_proc;
-#endif
+#define flush_headers(r)  do {} while(0)
 
+static char *encode_get_args (request_rec *r, char *in, int ec);
+
+static ngx_int_t pubcookie_post_handler (ngx_http_request_t *r);
 static ngx_int_t ngx_pubcookie_authz_handler(ngx_http_request_t *r);
 
 static void *ngx_pubcookie_create_loc_conf (ngx_conf_t *cf);
@@ -253,10 +310,10 @@ static char *pubcookie_set_appid (ngx_conf_t *cf, ngx_command_t *cmd, void *conf
 static char *pubcookie_set_appsrvid (ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static char *pubcookie_set_noprompt (ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static char *pubcookie_set_super_debug (ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static char *pubcookie_set_post_url (ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 static char pubcookie_auth_type (ngx_http_request_t * r);
 
-static int pubcookie_post_handler (ngx_http_request_t * r, ngx_pubcookie_loc_t *cfg, ngx_pubcookie_srv_t *scfg, ngx_pubcookie_req_t *rr);
 static int pubcookie_user (ngx_http_request_t * r, ngx_pubcookie_loc_t *cfg, ngx_pubcookie_srv_t *scfg, ngx_pubcookie_req_t *rr);
 static int pubcookie_user_hook (ngx_http_request_t * r);
 
@@ -446,11 +503,11 @@ static ngx_command_t  ngx_pubcookie_commands[] = {
       NULL },
 
     /* "Set post response URL. Def = /PubCookie.reply" */
-    { ngx_string("pubcookie_post_url"),
-      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
-      ngx_conf_set_str_slot,
+    { ngx_string("pubcookie_post"),
+      NGX_HTTP_LOC_CONF|NGX_CONF_NOARGS,
+      pubcookie_set_post_url,
       NGX_HTTP_SRV_CONF_OFFSET,
-      offsetof(ngx_pubcookie_srv_t, post_reply_url),
+      offsetof(ngx_pubcookie_srv_t, post_url),
       NULL },
 
     /* "Set login method (GET/POST). Def = GET" */
@@ -639,7 +696,7 @@ dump_recs(ngx_http_request_t *r, ngx_pubcookie_loc_t *c, ngx_pubcookie_srv_t *s)
     pc_req_log(r, "| crypt_key=%s egd_socket=%s", nswrap(p,&s->crypt_key), nswrap(p, &s->egd_socket));
     pc_req_log(r, "| dirdepth=%d noblank=%d catenate=%d no_clean_creds=%d use_post=%d behind_proxy=%d", s->dirdepth, s->noblank, s->catenate, s->no_clean_creds, s->use_post, s->behind_proxy);
     pc_req_log(r, "| oldappid=%s appid=%s appsrvid=%s", nswrap(p,&c->oldappid), nswrap(p,&c->appid), nswrap(p,&s->appsrvid));
-    pc_req_log(r, "| post_reply_url=%s end_session=%s addl_requests=%s accept_realms=%s", nswrap(p,&s->post_reply_url), nswrap(p,&c->end_session), nswrap(p,&c->addl_requests), nswrap(p,&c->accept_realms));
+    pc_req_log(r, "| post_url=%s end_session=%s addl_requests=%s accept_realms=%s", nswrap(p,&s->post_url), nswrap(p,&c->end_session), nswrap(p,&c->addl_requests), nswrap(p,&c->accept_realms));
     pc_req_log(r, "| crypt_alg=%d inact_exp=%d hard_exp=%d non_ssl_ok=%d session_reauth=%d", s->crypt_alg, c->inact_exp, c->hard_exp, c->non_ssl_ok, c->session_reauth);
     pc_req_log(r, "| strip_realm=%d noprompt=%d", c->strip_realm, c->noprompt);
     pc_req_log(r, "+----------------------------------");
@@ -873,6 +930,7 @@ static char *
 pubcookie_set_appid (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
     ngx_pubcookie_loc_t *cfg = conf;
+    ngx_pubcookie_srv_t *scfg;
     ngx_str_t *value = cf->args->elts;
     u_char *c;
     u_int i;
@@ -894,6 +952,10 @@ pubcookie_set_appid (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     }
     *c = '\0';
     cfg->appid.len = (int)(c - cfg->appid.data);
+
+    /* mark server as pubcookie-enabled */
+    scfg = ngx_http_conf_get_module_srv_conf(cf, ngx_pubcookie_module);
+    scfg->locations++;
 
     return NGX_CONF_OK;
 }
@@ -940,6 +1002,20 @@ pubcookie_set_noprompt (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     } else {
         return "Invalid value in pubcookie_noprompt";
     }
+
+    return NGX_CONF_OK;
+}
+
+static char *
+pubcookie_set_post_url (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+{
+    ngx_pubcookie_srv_t *scfg = conf;
+    ngx_http_core_loc_conf_t  *core_lcf;
+
+    core_lcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
+    scfg->post_url = core_lcf->name;
+    core_lcf->handler = pubcookie_post_handler;
+    pc_cf_log(cf, "post URL is %V", &core_lcf->name);
 
     return NGX_CONF_OK;
 }
@@ -1026,9 +1102,9 @@ ngx_pubcookie_create_srv_conf(ngx_conf_t *cf)
     ngx_pubcookie_srv_t  *scfg;
 
     scfg = ngx_pcalloc(cf->pool, sizeof(ngx_pubcookie_srv_t));
-    if (NULL == scfg) {
+    if (NULL == scfg)
         return NULL;
-    }
+
     scfg->signature = PBC_SRV_SIGNATURE;
     scfg->log = cf->log;
     scfg->pool = cf->pool;
@@ -1060,7 +1136,6 @@ ngx_pubcookie_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child)
     ngx_conf_merge_value(scfg->use_post, sprv->use_post, 0);
     ngx_conf_merge_uint_value(scfg->crypt_alg, sprv->crypt_alg, PBC_DEF_CRYPT);
     ngx_conf_merge_value(scfg->behind_proxy, sprv->behind_proxy, 0);
-    ngx_conf_merge_str_value(scfg->post_reply_url, sprv->post_reply_url, "/PubCookie.reply");
 
     for (i = 0; pbc_cfg_str_fields[i].name != NULL; i++) {
         int off = pbc_cfg_str_fields[i].offset;
@@ -1068,6 +1143,13 @@ ngx_pubcookie_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child)
         ngx_str_t *cs = (ngx_str_t *)((char *) scfg + off);
         if (NULL == cs->data)
             *cs = *ps;
+    }
+
+    if (0 == scfg->locations)
+        return NGX_CONF_OK;
+
+    if (scfg->use_post && NULL == scfg->post_url.data) {
+        return "pubcookie_post: post reply location e.g. /PubCookie.reply must be set!";
     }
 
     if (NULL == scfg->ssl_key_file.data) {
@@ -1519,82 +1601,39 @@ check_end_session (ngx_http_request_t * r)
 static int
 add_out_header (ngx_http_request_t *r, const char *name, u_char *value)
 {
-    ngx_table_elt_t *header;
-    int non_std = 0;
-    int setup_key = 0;
-
-    if (0 == strcmp(name, "Expires")) {
-        header = r->headers_out.expires;
-    } else if (0 == strcmp(name, "Refresh")) {
-        header = r->headers_out.refresh;
-    } else if (0 == strcmp(name, "Location")) {
-        header = r->headers_out.location;
-    } else {
-        non_std = 1;
-    }
-
-    if (non_std) {
-        header = ngx_list_push(&r->headers_out.headers);
-        setup_key = 1;
-    } else if (NULL == header) {
-        header = ngx_pcalloc(r->pool, sizeof(ngx_table_elt_t));
-        setup_key = 1;
-    }
-
-    if (NULL == header) {
+    ngx_table_elt_t *hdr;
+    if (NULL == (hdr = ngx_list_push(&r->headers_out.headers))) {
         pc_req_log(r, "cannot allocate memory for header structure");
         return NGX_ERROR;
     }
-
-    if (setup_key) {
-        header->hash = 1;
-        header->key.data = (u_char *) name;
-        header->key.len = strlen(name);
-    }
-
-    header->value.len = ngx_strlen(value);
-    header->value.data = ngx_pcalloc(r->pool, header->value.len + 1);
-    ngx_memcpy(header->value.data, value, header->value.len + 1);
-    /*pc_req_log(r, "new_header: name=(%s) value=(%s)", header->key.data, header->value.data);*/
-
-    if (NULL == header->value.data) {
-        pc_req_log(r, "cannot allocate memory for out header value");
+    hdr->hash = 1;
+    hdr->key.data = (u_char *) name;
+    hdr->key.len = ngx_strlen((u_char *) name);
+    if (NULL == (hdr->value.data = ap_pstrdup(r->pool, (char *) value))) {
+        pc_req_log(r, "cannot allocate memory for header value");
         return NGX_ERROR;
     }
-
-    if (0 == strcmp(name, "Cache-Control")) {
-        ngx_table_elt_t  **ccp = r->headers_out.cache_control.elts;
-        if (NULL == ccp) {
-            if (ngx_array_init(&r->headers_out.cache_control, r->pool, 1,
-                                sizeof(ngx_table_elt_t *)) != NGX_OK) {
-                pc_req_log(r, "cannot allocate memory for cache-control array");
-                return NGX_ERROR;
-            }
-        }
-        ccp = ngx_array_push(&r->headers_out.cache_control);
-        if (NULL == ccp) {
-            pc_req_log(r, "cannot allocate memory for cache-control element");
-            return NGX_ERROR;
-        }
-        *ccp = header;
+    hdr->value.len = ngx_strlen((u_char *) value);
+    if (hdr->key.len == sizeof("Content-Length") - 1
+        && 0 == ngx_strncasecmp(hdr->key.data, (u_char *) "Content-Length",
+                                sizeof("Content-Length") - 1)) {
+        r->headers_out.content_length_n = ngx_atoi(hdr->value.data, hdr->value.len);
+        r->headers_out.content_length = hdr;
     }
-
     return NGX_OK;
 }
 
 /*
  * make sure agents don't cache the redirect
  */
-static int
+static void
 set_no_cache_headers (ngx_http_request_t * r)
 {
-    int rc = NGX_OK;
     u_char buf[32] = {0};
     ngx_http_time(buf, r->start_sec);
-    rc |= add_out_header(r, "Expires", buf);
-    rc |= add_out_header(r, "Cache-Control", (u_char *) "no-store, no-cache, must-revalidate");
-    rc |= add_out_header(r, "Pragma", (u_char *) "no-cache");
-    return rc;
+    add_out_header(r, "Expires", buf);
+    add_out_header(r, "Cache-Control", (u_char *) "no-store, no-cache, must-revalidate");
+    add_out_header(r, "Pragma", (u_char *) "no-cache");
 }
 
 /*
@@ -2035,7 +2074,7 @@ get_post_data (ngx_http_request_t * r, int post_len)
  * Encode the args
  */
 static char *
-encode_get_args (ngx_http_request_t *r, char *in, int ec)
+__FIXME_encode_get_args (ngx_http_request_t *r, char *in, int ec)
 {
     int na = 0;
     char *enc, *s;
@@ -2355,7 +2394,7 @@ auth_failed_handler (ngx_http_request_t * r,
 #endif
     }
 
-    /*flush_headers (r); will be done later*/
+    flush_headers (r);
 
     /* If we're using the post method, just bundle everything
        in a post to the login server. */
@@ -2376,7 +2415,7 @@ auth_failed_handler (ngx_http_request_t * r,
                     encode_get_args(r, post_data, 1),
                     ap_get_server_name(r),
                     cp,
-                    str2charp(p, &scfg->post_reply_url) + 1 /* skip first slash */
+                    str2charp(p, &scfg->post_url) + 1 /* skip first slash */
                     );
 
     } else if (ctype && (tenc || lenp || r->method == NGX_HTTP_POST)) {
@@ -2422,8 +2461,8 @@ pubcookie_user_hook (ngx_http_request_t * r)
     char creds;
 
     /* pass if the request is for our post-reply */
-    if (0 == ngx_strcasecmp (r->uri.data, scfg->post_reply_url.data)) {
-        return pubcookie_post_handler(r, cfg, scfg, rr);
+    if (0 == ngx_strcasecmp (r->uri.data, scfg->post_url.data)) {
+        return NGX_OK;
     }
 
     /* get pubcookie creds or bail if not a pubcookie auth_type */
@@ -2977,7 +3016,7 @@ ngx_pubcookie_authz_handler(ngx_http_request_t *r)
     }
 
     /* pass if the request is our post-reply */
-    if (0 == ngx_strcasecmp(r->uri.data, scfg->post_reply_url.data)) {
+    if (0 == ngx_strcasecmp(r->uri.data, scfg->post_url.data)) {
         return NGX_OK;
     }
 
@@ -3018,7 +3057,7 @@ ngx_pubcookie_authz_handler(ngx_http_request_t *r)
          * doing the deferred method, append any headers we've accumulated
          * to the real header list.
          */
-        /*flush_headers(r);*/
+        flush_headers(r);
         ngx_http_send_header(r);
 
         b = ngx_create_temp_buf(r->pool, len);
@@ -3137,26 +3176,302 @@ ngx_pubcookie_init(ngx_conf_t *cf)
     return NGX_OK;
 }
 
-/*
+/*************************
  *  POST handler
  */
 
-static int
-pubcookie_post_handler (ngx_http_request_t * r,
-                        ngx_pubcookie_loc_t *cfg,
-                        ngx_pubcookie_srv_t *scfg,
-                        ngx_pubcookie_req_t *rr)
+/* Encode the args */
+#define request_rec ngx_http_request_t
+#define ap_palloc ngx_palloc
+
+static char *encode_get_args (request_rec *r, char *in, int ec)
 {
+    int na = 0;
+    char *enc, *s;
+
+    for (s=in; s&&*s; s++) {
+        if ( (*s=='"') ||
+             (*s == '<') ||
+             (*s == '>') ||
+             (*s == '(') ||
+             (*s == ')') ||
+             (*s == ':') ||
+             (*s == ';') ||
+             (*s == '\n') ||
+             (*s == '\r') ) na++;
+    }
+    if (!na) return (in);
+
+    enc = (char*) ap_palloc (r->pool, strlen(in)+(na*5));
+    for (s=enc; in&&*in; in++) {
+        switch (*in) { 
+
+            case '"':  strcpy(s, "%22"); s+=3; break;
+            case '<':  strcpy(s, "%3C"); s+=3; break;
+            case '>':  strcpy(s, "%3E"); s+=3; break;
+            case '(':  strcpy(s, "%28"); s+=3; break;
+            case ')':  strcpy(s, "%29"); s+=3; break;
+            case ':':  if (ec) {
+                           strcpy(s, "%3A"); s+=3;
+                       } else *s++ = *in;
+                       break;
+            case ';':  strcpy(s, "%3B"); s+=3; break;
+            case '\n': strcpy(s, "&#10;"); s+=5; break;
+            case '\r': strcpy(s, "&#13;"); s+=5; break;
+            default: *s++ = *in;
+        }
+    }
+    *s = '\0';
+
+    return (enc);
+}
+
+/* entity encode some post data */
+
+static char *encode_data (request_rec *r, char *in)
+{
+    int na = 0;
+    char *enc, *s;
+
+    for (s=in; s&&*s; s++) {
+        if ( (*s=='"') ||
+             (*s == '\'') ||
+             (*s == '<') ||
+             (*s == '>') ||
+             (*s == ':') ||
+             (*s == '\n') ||
+             (*s == '\r') ) na++;
+    }
+    if (!na) return (in);
+
+    enc = (char*) ap_palloc (r->pool, strlen(in)+(na*5));
+    for (s=enc; in&&*in; in++) {
+        switch (*in) { 
+
+            case '"':  strcpy(s, "&quot;"); s+=6; break;
+            case '<':  strcpy(s, "&lt;"); s+=4; break;
+            case '>':  strcpy(s, "&gt;"); s+=4; break;
+            case '\n': strcpy(s, "&#10;"); s+=5; break;
+            case '\r': strcpy(s, "&#13;"); s+=5; break;
+            default: *s++ = *in;
+        }
+    }
+    *s = '\0';
+
+    return (enc);
+}
+
+/* decode an arg string */
+
+static char *decode_data(char *in)
+{
+   char *s;
+   char *v;
+   long int k;
+   char hex[4];
+   char *e;
+
+   if ((!in)||!*in) return ("");
+   for (v=in,s=in; *s; s++) {
+      switch (*s) {
+        case '+': *v++ = ' ';
+                  break;
+        case '%': hex[0] = *++s;
+                  hex[1] = *++s;
+                  hex[2] = '\0';
+                  k = strtol(hex,0,16);
+                  *v++ = (char)k;
+                  break;
+        default:  *v++ = *s;
+      }
+   }
+   *v = '\0';
+
+   for (v=in,s=in; *s; s++) {
+      switch (*s) {
+        case '&': if (*(s+1)=='#') {
+                     s += 2;
+                     if ((*s=='x')||(*s=='X')) k = strtol(s+1, &e, 16);
+                     else k = strtol(s, &e, 10);
+                     *v++ = (char)k;
+                     if (*e==';') s = e;
+                     else s = e-1;
+                  } else *v++ = '&';
+                  break; 
+        default:  *v++ = *s;
+      }
+   }
+   *v = '\0';
+
+   return (in);
+}
+
+/* Read and parse query_string args. 
+   Check validity and add to argtbl. */
+#if 0
+static void scan_args (request_rec *r, table *argtbl, char *arg)
+{
+    char *p, *q, *s;
+
+    p = arg;
+
+    while (p) {
+        if (q = strchr (p, '&')) *q++ = '\0';
+        if (s = strchr (p, '=')) *s++ = '\0';
+        else s = "";
+
+        decode_data (s);
+        ap_table_set (argtbl, p, s);
+        p = q;
+    }
+    return;
+}
+
+/* verify the url. return the url if OK.
+   We are mostly checking for characters that
+   could introduce javascript xss code. 
+
+   If we're not encoding colons - the GET case - then
+   we will also decode any encoded ones from the login server. */
+
+static char *verify_url(request_rec *r, char *in, int ec)
+{
+    int n;
+    char *sa, *e, *enc;
+    char *s = in;
+    char *dpath;
+    int dpathl, sl;
+
+    if (!s) return (NULL);
+
+    ap_log_rerror (PC_LOG_DEBUG, r, "verify-url in: %s", in);
+
+    /* check protocol */
+    if (!strncmp(s, "http://", 7)) s+=7;
+    else if (!strncmp(s, "https://", 8)) s += 8;
+    else return (NULL);
+
+    /* check hostname ( letters, digits, dash )*/
+    while (isalnum(*s) || (*s=='-') || (*s=='.')) s++;
+    if (*s=='\0') return (in);
+  
+    /* port? */
+    if (*s==':') {
+       s++;
+       while (isdigit(*s)) s++;
+    }
+    if (*s=='\0') return (in);
+    if (*s++!='/') return (NULL);
+
+    /* decode the path */
+    
+    sl = strlen(s);
+    dpath = ap_palloc (r->pool, sl);
+    dpathl = strlen(s);
+    /* the login may have turned our pluses to spaces */
+    for (e=s; *e; e++) if (*e==' ') *e = '+';
+    ap_log_rerror (PC_LOG_DEBUG, r, "verify-url decoding: %s", s);
+    if (!libpbc_base64_decode (r->pool, (unsigned char *) s,
+                                 (unsigned char *) dpath, &dpathl)) {
+          ap_log_rerror (PC_LOG_ERR, r,
+                         "DEC path: libpbc_base64_decode() failed");
+    }
+    if (*dpath=='/') dpath++;
+    strncpy(s, dpath, sl);
+    ap_log_rerror (PC_LOG_DEBUG, r, "verify-url path is: %s", s);
+
+    /* see if we have to encode anything in the path */
+
+    sa = s;
+    n = 0;
+    for (; s&&*s; s++) {
+        if ( (*s=='"') ||
+             (*s == '<') ||
+             (*s == '>') ||
+             (*s == ':') ||
+             (*s == ';') ||
+             (*s == '?') ||
+             (*s == '%') ||
+             (*s == '=') ) n++;
+    }
+    if (n==0) return (in);  /* nothing to do */
+
+    /* else have some 'coding to do */
+    enc = (char*) ap_palloc (r->pool, strlen(in)+(n*4));
+    strncpy(enc, in, sa-in);
+    for (s=enc+(sa-in); sa&&*sa; sa++) {
+        switch (*sa) { 
+
+            case '"':  strcpy(s, "%22"); s+=3; break;
+            case '<':  strcpy(s, "%3C"); s+=3; break;
+            case '>':  strcpy(s, "%3E"); s+=3; break;
+            case ':':  if (ec) {
+                           strcpy(s, "%3A"); s+=3;
+                       } else *s++ = *sa;
+                       break;
+            case ';':  strcpy(s, "%3B"); s+=3; break;
+            case '?':  strcpy(s, "%3F"); s+=3; break;
+            case '=':  strcpy(s, "%3D"); s+=3; break;
+            case '%':  if (ec || strncmp(sa,"%3A",3)) *s++ = *sa;
+                       else *s++=':',sa+=2;
+                       break;
+            default: *s++ = *sa;
+        }
+    }
+    *s = '\0';
+
+    ap_log_rerror (PC_LOG_DEBUG, r, "verify-url out: %s", enc);
+
+    return (enc);
+}
+
+
+/* verify a base64 string. return 1 on OK, Truncate at error. */
+
+static int verify_base64(request_rec *r, char *in)
+{
+    char *s;
+    for (s=in; s && *s; s++) {
+        if (isalnum(*s)) continue;
+        if ((*s=='+')||(*s=='/')||(*s=='=')) continue;
+        *s++ = '\0';
+        if (!*s) break; /* newline at end */
+        ap_log_rerror (PC_LOG_ERR, r, "verify-base64 truncated: %s", in);
+        return (0);  
+    }
+    return (1);
+}
+#endif
+
+/* Handle the granting reply */
+
+static ngx_int_t
+pubcookie_post_handler (ngx_http_request_t * r)
+{
+    ngx_buf_t *b = ngx_pcalloc(r->pool, sizeof(ngx_buf_t));
+    ngx_chain_t out;
+    pc_req_log(r, "THIS IS POST");
+    r->headers_out.status = NGX_HTTP_OK;
+    add_out_header(r, "Content-Type", (u_char *) "text/plain");
+    add_out_header(r, "Content-Length", (u_char *) "6");
+    ngx_http_send_header(r);
+    b->pos = (u_char *) "post\r\n";
+    b->last = b->pos + 6;
+    b->memory = 1;
+    b->last_buf = 1;
+    out.buf = b;
+    out.next = NULL;
+    return ngx_http_output_filter(r, &out);
+#if 0
     ngx_pool_t *p = r->pool;
     table *args = ap_make_table (r->pool, 5);
     const char *greply, *creply, *pdata;
     char *arg;
     char *a;
-    const char *lenp = ap_table_get (r->headers_in, "Content-Length");
+    const char *lenp = get_hdr_in(r,content_length);
     char *post_data;
     char *gr_cookie, *cr_cookie;
     const char *r_url;
-    pool *p = r->pool;
 
     pc_req_log(r, "login_reply_handler: hello");
 
@@ -3164,8 +3479,8 @@ pubcookie_post_handler (ngx_http_request_t * r,
 
     /* Get the request data */
 
-    if (r->args) {
-        arg = ap_pstrdup (p, r->args);
+    if (r->args.len) {
+        arg = str2charp (p, &r->args);
         scan_args (r, args, arg);
     }
     if (lenp) {
@@ -3263,14 +3578,14 @@ pubcookie_post_handler (ngx_http_request_t * r,
 
     } else {                    /* do a get */
         /* Apache uses the error headers when we return a redirect */
-        add_set_cookie(r, gr_cookie);
-        if (creply)
-            add_set_cookie(r, cr_cookie);
-        add_out_heaaader("Location", arg);
-        return NGX_HTTP_MOVED_TEMPORARILY;
+        ap_table_add (HDRS_OUT, "Set-Cookie", gr_cookie);
+        if (creply)  ap_table_add (HDRS_OUT, "Set-Cookie", cr_cookie);
+        ap_table_add (HDRS_OUT, "Location", arg);
+        return (NGX_HTTP_MOVED_TEMPORARILY);
     }
 
-    return (OK);
+    return (NGX_OK);
+#endif
 }
 
 /* SVN Id: $Id$ */
