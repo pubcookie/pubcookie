@@ -43,13 +43,19 @@ static struct {
     { NULL, 0 }
 };
 
+extern ngx_module_t ngx_pubcookie_module;
+
+
 /***********************************
  * Prototypes
  */
 
 #define pubcookie_set_realm(r,realm)   add_out_header(r,"WWW-Authenticate",realm)
 
+static int ngx_strcat3 (ngx_pool_t *pool, ngx_str_t *res, ngx_str_t *s1, ngx_str_t *s2, ngx_str_t *s3);
+
 static char *encode_get_args (request_rec *r, char *in, int ec);
+static char *get_post_data (ngx_http_request_t * r, int post_len);
 
 static ngx_int_t pubcookie_post_handler (ngx_http_request_t *r);
 static ngx_int_t ngx_pubcookie_authz_handler(ngx_http_request_t *r);
@@ -80,17 +86,111 @@ static int pubcookie_user_hook (ngx_http_request_t * r);
 
 
 /**************************************
- * Utilities
+ * Apache/APR compatibility
  */
 
-static void
-ngx_str_assign_copy (ngx_pool_t *p, ngx_str_t *dst, u_char *src)
+#define ap_table_add(tbl,hdr,val) add_out_header(r,hdr,val)
+
+typedef ngx_array_t table;
+
+static table *
+ap_make_table (ngx_pool_t *p, int n)
 {
-    ngx_str_t tmp;
-    tmp.data = (u_char *) src;
-    tmp.len = ngx_strlen(tmp.data);
-    dst->data = ngx_pstrdup(p, &tmp);
-    dst->len = tmp.len;
+    return ngx_array_create(p, n, sizeof(ngx_hash_key_t));
+}
+
+static inline ngx_hash_key_t *
+__ap_table_find (table *t, const char *key)
+{
+    ngx_hash_key_t *d = t->elts;
+    int i, n = strlen(key);
+    for (i = 0; i < t->nelts; i++)
+        if (d[i].key.len == n && 0 == strncmp((char *) d[i].key.data, key, n))
+            return &d[i];
+    return NULL;
+}
+
+static ngx_int_t
+ap_table_set (table *t, const char *key, const char *value)
+{
+    ngx_hash_key_t *data = __ap_table_find(t, key);
+    if (NULL == data && NULL == (data = ngx_array_push(t)))
+        return NGX_ERROR;
+    data->key.data = (u_char *) key;
+    data->key.len = strlen(key);
+    data->key_hash = 1;
+    data->value = (void *) value;
+    return NGX_OK;
+}
+
+static char *
+ap_table_get (table *t, const char *key)
+{
+    ngx_hash_key_t *data = __ap_table_find(t, key);
+    return data ? data->value : NULL;
+}
+
+static char *
+ap_psprintf(ngx_pool_t *p, const char *fmt, ...)
+{
+    u_char *s, *e, *d;
+    va_list args;
+    const int m = PBC_4K;
+    int n;
+
+    if (NULL == (s = ngx_pnalloc(p, m)))
+        return NULL;
+
+    va_start(args, fmt);
+    e = ngx_vslprintf(s, s + m - 1, fmt, args);
+    va_end(args);
+    *e = '\0';
+
+    n = (int)(e - s);
+    if (n < m / 2) {
+        d = (u_char *) ap_pstrdup(p, (char *) s);
+        if (NULL != d) {
+            ngx_pfree(p, s);
+            s = d;
+        }
+    }
+
+    return (char *) (s + n);
+}
+
+static char *
+ap_rprintf(ngx_http_request_t *r, const char *fmt, ...)
+{
+    ngx_pubcookie_req_t *rr = ngx_http_get_module_ctx(r, ngx_pubcookie_module);
+    u_char *s, *e, *d;
+    int m, n;
+    va_list args;
+
+    if (NULL == (s = rr->msg.data)) {
+        m = n = 0;
+    } else {
+        n = ngx_strlen(s);
+        m = rr->msg.len;
+    }
+
+    if (m - n < PBC_1K) {
+        m = n + PBC_4K;
+        if (NULL == (d = ngx_pnalloc(r->pool, m)))
+            return NULL;
+        if (n > 0)
+            ngx_memcpy(d, s, n);
+        s = d;
+    }
+
+    va_start(args, fmt);
+    e = ngx_vslprintf(s + n, s + (n + m - 1), fmt, args);
+    va_end(args);
+    *e = '\0';
+
+    rr->msg.data = s;
+    rr->msg.len = m;
+
+    return (char *) e;
 }
 
 static char *
@@ -114,7 +214,182 @@ ap_getword_white (ngx_pool_t *pool, char **line)
     *line = p;
     return res;
 }
+
+static char *
+ap_get_server_name (ngx_http_request_t *r)
+{
+    ngx_pubcookie_req_t *rr = ngx_http_get_module_ctx(r, ngx_pubcookie_module);
+    if (NULL == rr->server_name_tmp.data) {
+        ngx_http_core_srv_conf_t  *cscf = ngx_http_get_module_srv_conf(r, ngx_http_core_module);
+        ngx_strcat3(r->pool, &rr->server_name_tmp, &cscf->server_name, NULL, NULL);
+    }
+    return (char *) rr->server_name_tmp.data;
+}
+
+static int
+ap_get_server_port (ngx_http_request_t *r)
+{
+    ngx_uint_t            port;
+    struct sockaddr_in   *sin;
+#if (NGX_HAVE_INET6)
+    struct sockaddr_in6  *sin6;
+#endif
+
+    if (ngx_connection_local_sockaddr(r->connection, NULL, 0) != NGX_OK)
+        return NGX_ERROR;
+
+    switch (r->connection->local_sockaddr->sa_family) {
+#if (NGX_HAVE_INET6)
+    case AF_INET6:
+        sin6 = (struct sockaddr_in6 *) r->connection->local_sockaddr;
+        port = ntohs(sin6->sin6_port);
+        break;
+#endif
+    default: /* AF_INET */
+        sin = (struct sockaddr_in *) r->connection->local_sockaddr;
+        port = ntohs(sin->sin_port);
+        break;
+    }
+
+    return (port > 0 && port < 65536) ? (int) port : NGX_ERROR;
+}
+
+static char *
+ap_get_method_name (ngx_http_request_t *r)
+{
+    return str2charp(r->pool, &r->main->method_name);
+}
  
+static char *
+get_req_uri (ngx_http_request_t *r)
+{
+    ngx_pubcookie_req_t *rr = ngx_http_get_module_ctx(r, ngx_pubcookie_module);
+    if (NULL == rr->uri_tmp.data) {
+        ngx_strcat3(r->pool, &rr->uri_tmp, &r->uri, NULL, NULL);
+    }
+    return (char *) rr->uri_tmp.data;
+}
+
+static u_char *
+ap_make_dirstr_prefix(u_char *d, u_char *s, int n)
+{
+    if (n < 1) {
+        *d = '/';
+        *++d = '\0';
+        return (d);
+    }
+
+    for (;;) {
+        if (*s == '\0' || (*s == '/' && (--n) == 0)) {
+            *d = '/';
+            break;
+        }
+        *d++ = *s++;
+    }
+    *++d = 0;
+
+    return (d);
+}
+
+static u_char *
+ap_make_dirstr_parent (ngx_pool_t *p, u_char *s)
+{
+    u_char *d;
+    int l;
+
+    if (!*s) {
+        return ngx_pstrdup(p, &blank_str);
+    }
+
+    d = s + ngx_strlen(s) - 1;
+    while (d != s && *d != '/')
+        d--;
+
+    if (*d != '/') {
+        return ngx_pstrdup(p, &blank_str);
+    }
+    l = (d - s) + 1;
+    d = ngx_pnalloc(p, l + 1);
+    ngx_memcpy(d, s, l);
+    d[l] = 0;
+    return (d);
+}
+
+static int 
+ap_count_dirs (u_char *path)
+{
+    register int x, n;
+    for (x = 0, n = 0; path[x]; x++)
+        if (path[x] == '/')
+            n++;
+    return n;
+}
+
+/* c2x takes an unsigned, and expects the caller has guaranteed that
+ * 0 <= what < 256... which usually means that you have to cast to
+ * unsigned char first, because (unsigned)(char)(x) first goes through
+ * signed extension to an int before the unsigned cast.
+ *
+ * The reason for this assumption is to assist gcc code generation --
+ * the unsigned char -> unsigned extension is already done earlier in
+ * both uses of this code, so there's no need to waste time doing it
+ * again.
+ */
+static const char c2x_table[] = "0123456789abcdef";
+
+static unsigned char *
+c2x (unsigned what, unsigned char prefix, unsigned char *where)
+{
+    *where++ = prefix;
+    *where++ = c2x_table[what >> 4];
+    *where++ = c2x_table[what & 0xf];
+    return where;
+}
+
+static char *
+ap_os_escape_path (ngx_pool_t *p, const char *path, int partial)
+{
+    char *copy = (char *) ngx_pnalloc(p, 3 * strlen(path) + 3);
+    const unsigned char *s = (const unsigned char *)path;
+    unsigned char *d = (unsigned char *)copy;
+    unsigned c;
+    
+    if (!partial) {
+        const char *colon = strchr(path, ':');
+        const char *slash = strchr(path, '/');
+    
+        if (colon && (!slash || colon < slash)) {
+            *d++ = '.';
+            *d++ = '/';
+        }
+    }
+    while ((c = *s)) {
+        if (!isalnum(c) && !strchr("$-_.+!*'(),:@&=/~", c)) {
+            /* T_OS_ESCAPE_PATH */
+            d = c2x(c, '%', d);
+        } else {
+            *d++ = c;
+        }
+        ++s;
+    }
+    *d = '\0';
+    return copy;
+}
+
+/**************************************
+ * Utilities
+ */
+
+static void
+ngx_str_assign_copy (ngx_pool_t *p, ngx_str_t *dst, u_char *src)
+{
+    ngx_str_t tmp;
+    tmp.data = (u_char *) src;
+    tmp.len = ngx_strlen(tmp.data);
+    dst->data = ngx_pstrdup(p, &tmp);
+    dst->len = tmp.len;
+}
+
 static int
 ngx_strcat3 (ngx_pool_t *pool, ngx_str_t *res, ngx_str_t *s1, ngx_str_t *s2, ngx_str_t *s3)
 {
@@ -147,6 +422,69 @@ nswrap (ngx_pool_t *pool, ngx_str_t *nsp)
         return "\"\"";
     ngx_strcat3(pool, &res, &q, nsp, &q);
     return (char *) res.data;
+}
+
+/**************************************
+ * Requests
+ */
+
+static ngx_pubcookie_req_t *
+pubcookie_setup_request (ngx_http_request_t *r)
+{
+    ngx_pubcookie_srv_t *scfg = ngx_http_get_module_srv_conf(r, ngx_pubcookie_module);
+    ngx_pubcookie_req_t *rr = ngx_http_get_module_ctx(r, ngx_pubcookie_module);
+
+    scfg->log = r->connection->log;
+    scfg->pool = r->pool;
+
+    if (NULL == rr) {
+        if (NULL == (rr = ngx_pcalloc(r->pool, sizeof(ngx_pubcookie_req_t)))) {
+            return NULL;
+        }
+        if (ngx_array_init(&rr->notes, r->pool, 4, sizeof(ngx_table_elt_t)) != NGX_OK) {
+            return NULL;
+        }
+        ngx_http_set_ctx(r, rr, ngx_pubcookie_module);
+        rr->user_name = blank_str;
+    }
+
+    return rr;
+}
+
+static ngx_int_t
+pubcookie_finish_request (ngx_http_request_t *r)
+{
+    ngx_pubcookie_srv_t *scfg = ngx_http_get_module_srv_conf(r, ngx_pubcookie_module);
+    ngx_pubcookie_req_t *rr = ngx_http_get_module_ctx(r, ngx_pubcookie_module);
+    ngx_buf_t *b;
+    ngx_chain_t out;
+    u_char *msg;
+    int len;
+
+    if (NULL == rr || NULL == rr->msg.data)
+        return NGX_DECLINED;
+
+    msg = rr->msg.data;
+    len = ngx_strlen(msg);
+
+    r->headers_out.status = rr->status ? rr->status : NGX_HTTP_OK;
+    r->headers_out.content_length_n = len;
+    r->headers_out.last_modified_time = r->start_sec;
+
+    r->headers_out.content_type = pbc_content_type;
+    r->headers_out.content_type_len = pbc_content_type.len;
+
+    ngx_http_send_header(r);
+
+    if (NULL == (b = ngx_create_temp_buf(r->pool, len)))
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+
+    b->last = ngx_cpymem(b->last, msg, len);
+    b->last_buf = 1;
+    out.buf = b;
+    out.next = NULL;
+
+    return ngx_http_output_filter(r, &out);
 }
 
 
@@ -963,171 +1301,6 @@ create_location (ngx_conf_t *cf, const char *loc_name)
 }
 #endif
 
-/*************************************************
- * Apache ports
- */
-
-static char *
-ap_get_server_name (ngx_http_request_t *r)
-{
-    ngx_pubcookie_req_t *rr = ngx_http_get_module_ctx(r, ngx_pubcookie_module);
-    if (NULL == rr->server_name_tmp.data) {
-        ngx_http_core_srv_conf_t  *cscf = ngx_http_get_module_srv_conf(r, ngx_http_core_module);
-        ngx_strcat3(r->pool, &rr->server_name_tmp, &cscf->server_name, NULL, NULL);
-    }
-    return (char *) rr->server_name_tmp.data;
-}
-
-static int
-ap_get_server_port (ngx_http_request_t *r)
-{
-    ngx_uint_t            port;
-    struct sockaddr_in   *sin;
-#if (NGX_HAVE_INET6)
-    struct sockaddr_in6  *sin6;
-#endif
-
-    if (ngx_connection_local_sockaddr(r->connection, NULL, 0) != NGX_OK)
-        return NGX_ERROR;
-
-    switch (r->connection->local_sockaddr->sa_family) {
-#if (NGX_HAVE_INET6)
-    case AF_INET6:
-        sin6 = (struct sockaddr_in6 *) r->connection->local_sockaddr;
-        port = ntohs(sin6->sin6_port);
-        break;
-#endif
-    default: /* AF_INET */
-        sin = (struct sockaddr_in *) r->connection->local_sockaddr;
-        port = ntohs(sin->sin_port);
-        break;
-    }
-
-    return (port > 0 && port < 65536) ? (int) port : NGX_ERROR;
-}
-
-static char *
-ap_get_method_name (ngx_http_request_t *r)
-{
-    return str2charp(r->pool, &r->main->method_name);
-}
- 
-static char *
-get_req_uri (ngx_http_request_t *r)
-{
-    ngx_pubcookie_req_t *rr = ngx_http_get_module_ctx(r, ngx_pubcookie_module);
-    if (NULL == rr->uri_tmp.data) {
-        ngx_strcat3(r->pool, &rr->uri_tmp, &r->uri, NULL, NULL);
-    }
-    return (char *) rr->uri_tmp.data;
-}
-
-static u_char *
-ap_make_dirstr_prefix(u_char *d, u_char *s, int n)
-{
-    if (n < 1) {
-        *d = '/';
-        *++d = '\0';
-        return (d);
-    }
-
-    for (;;) {
-        if (*s == '\0' || (*s == '/' && (--n) == 0)) {
-            *d = '/';
-            break;
-        }
-        *d++ = *s++;
-    }
-    *++d = 0;
-
-    return (d);
-}
-
-static u_char *
-ap_make_dirstr_parent (ngx_pool_t *p, u_char *s)
-{
-    u_char *d;
-    int l;
-
-    if (!*s) {
-        return ngx_pstrdup(p, &blank_str);
-    }
-
-    d = s + ngx_strlen(s) - 1;
-    while (d != s && *d != '/')
-        d--;
-
-    if (*d != '/') {
-        return ngx_pstrdup(p, &blank_str);
-    }
-    l = (d - s) + 1;
-    d = ngx_pnalloc(p, l + 1);
-    ngx_memcpy(d, s, l);
-    d[l] = 0;
-    return (d);
-}
-
-static int 
-ap_count_dirs (u_char *path)
-{
-    register int x, n;
-    for (x = 0, n = 0; path[x]; x++)
-        if (path[x] == '/')
-            n++;
-    return n;
-}
-
-/* c2x takes an unsigned, and expects the caller has guaranteed that
- * 0 <= what < 256... which usually means that you have to cast to
- * unsigned char first, because (unsigned)(char)(x) first goes through
- * signed extension to an int before the unsigned cast.
- *
- * The reason for this assumption is to assist gcc code generation --
- * the unsigned char -> unsigned extension is already done earlier in
- * both uses of this code, so there's no need to waste time doing it
- * again.
- */
-static const char c2x_table[] = "0123456789abcdef";
-
-static unsigned char *
-c2x (unsigned what, unsigned char prefix, unsigned char *where)
-{
-    *where++ = prefix;
-    *where++ = c2x_table[what >> 4];
-    *where++ = c2x_table[what & 0xf];
-    return where;
-}
-
-static char *
-ap_os_escape_path (ngx_pool_t *p, const char *path, int partial)
-{
-    char *copy = (char *) ngx_pnalloc(p, 3 * strlen(path) + 3);
-    const unsigned char *s = (const unsigned char *)path;
-    unsigned char *d = (unsigned char *)copy;
-    unsigned c;
-    
-    if (!partial) {
-        const char *colon = strchr(path, ':');
-        const char *slash = strchr(path, '/');
-    
-        if (colon && (!slash || colon < slash)) {
-            *d++ = '.';
-            *d++ = '/';
-        }
-    }
-    while ((c = *s)) {
-        if (!isalnum(c) && !strchr("$-_.+!*'(),:@&=/~", c)) {
-            /* T_OS_ESCAPE_PATH */
-            d = c2x(c, '%', d);
-        } else {
-            *d++ = c;
-        }
-        ++s;
-    }
-    *d = '\0';
-    return copy;
-}
-
 /**************************************
  *  Cookies
  */
@@ -1332,7 +1505,7 @@ check_end_session (ngx_http_request_t * r)
  * push another cookie to client
  */
 static int
-add_out_header (ngx_http_request_t *r, const char *name, u_char *value)
+add_out_header (ngx_http_request_t *r, const char *name, const char *value)
 {
     ngx_table_elt_t *hdr;
     if (NULL == (hdr = ngx_list_push(&r->headers_out.headers))) {
@@ -1342,7 +1515,7 @@ add_out_header (ngx_http_request_t *r, const char *name, u_char *value)
     hdr->hash = 1;
     hdr->key.data = (u_char *) name;
     hdr->key.len = ngx_strlen((u_char *) name);
-    if (NULL == (hdr->value.data = ap_pstrdup(r->pool, (char *) value))) {
+    if (NULL == (hdr->value.data = (u_char *) ap_pstrdup(r->pool, (char *) value))) {
         pc_req_log(r, "cannot allocate memory for header value");
         return NGX_ERROR;
     }
@@ -1362,20 +1535,15 @@ add_out_header (ngx_http_request_t *r, const char *name, u_char *value)
 static void
 set_no_cache_headers (ngx_http_request_t * r)
 {
-    u_char buf[32] = {0};
-    ngx_http_time(buf, r->start_sec);
-    add_out_header(r, "Expires", buf);
-    add_out_header(r, "Cache-Control", (u_char *) "no-store, no-cache, must-revalidate");
-    add_out_header(r, "Pragma", (u_char *) "no-cache");
-}
-
-/*
- * push another cookie to client
- */
-static inline int
-add_set_cookie (ngx_http_request_t *r, u_char *value)
-{
-    return add_out_header(r, "Set-Cookie", value);
+    ngx_pubcookie_req_t *rr = ngx_http_get_module_ctx(r, ngx_pubcookie_module);
+    if (! rr->no_cache_set) {
+        char buf[32];
+        *( ngx_http_time((u_char *) buf, r->start_sec) ) = '\0';
+        add_out_header(r, "Expires", buf);
+        add_out_header(r, "Cache-Control", "no-store, no-cache, must-revalidate");
+        add_out_header(r, "Pragma", "no-cache");
+        rr->no_cache_set = 1;
+    }
 }
 
 /*
@@ -1388,7 +1556,7 @@ set_session_cookie (ngx_http_request_t * r,
                     ngx_pubcookie_req_t * rr, int firsttime)
 {
     ngx_pool_t *p = r->pool;
-    u_char *new_cookie = ngx_pcalloc(p, PBC_4K);
+    char *new_cookie;
     u_char *cookie;
 
     if (firsttime != 1) {
@@ -1412,12 +1580,13 @@ set_session_cookie (ngx_http_request_t * r,
                                     ME(r), 0, scfg->crypt_alg);
     }
 
-    ngx_sprintf (new_cookie, "%s=%s; path=%s;%s",
+    new_cookie = ap_psprintf(p, "%s=%s; path=%s;%s",
                               make_session_cookie_name (p,
                                                         PBC_S_COOKIENAME,
                                                         (u_char *) appid(r)),
                               cookie, "/", secure_cookie);
-    add_set_cookie(r, new_cookie);
+    add_out_header(r, "Set-Cookie", new_cookie);
+    ngx_pfree(p, new_cookie);
 
     if (firsttime && rr->cred_transfer.data) {
         char *blob = NULL;
@@ -1450,12 +1619,13 @@ set_session_cookie (ngx_http_request_t * r,
         }
 
         /* set */
-        ngx_sprintf(new_cookie, "%s=%s; path=%s;%s",
+        new_cookie = ap_psprintf(p, "%s=%s; path=%s;%s",
                                   make_session_cookie_name (p,
                                                             PBC_CRED_COOKIENAME,
                                                             appid(r)),
                                   base64, "/", secure_cookie);
-        add_set_cookie(r, new_cookie);
+        add_out_header(r, "Set-Cookie", new_cookie);
+        ngx_pfree(p, new_cookie);
 
         /* xxx eventually when these are just cookie extensions, they'll
            automatically be copied from the granting cookie to the 
@@ -1473,14 +1643,14 @@ clear_granting_cookie (ngx_http_request_t * r)
 {
     ngx_pubcookie_loc_t *cfg = ngx_http_get_module_loc_conf(r, ngx_pubcookie_module);
     ngx_pubcookie_srv_t *scfg = ngx_http_get_module_srv_conf(r, ngx_pubcookie_module);
-    u_char *new_cookie = ngx_pcalloc(r->pool, PBC_4K);
+    char *new_cookie;
 
     if (scfg->use_post)
-        ngx_sprintf(new_cookie, "%s=; path=/; expires=%s;%s",
+        new_cookie = ap_psprintf(r->pool, "%s=; path=/; expires=%s;%s",
                                   PBC_G_COOKIENAME,
                                   EARLIEST_EVER, secure_cookie);
     else
-        ngx_sprintf(new_cookie, "%s=; domain=%s; path=/; expires=%s;%s",
+        new_cookie = ap_psprintf(r->pool, "%s=; domain=%s; path=/; expires=%s;%s",
                          PBC_G_COOKIENAME, PBC_ENTRPRS_DOMAIN,
                          EARLIEST_EVER, secure_cookie);
 
@@ -1488,7 +1658,7 @@ clear_granting_cookie (ngx_http_request_t * r)
                "clear_granting_cookie: setting cookie: %s",
                new_cookie);
 
-    add_set_cookie(r, new_cookie);
+    add_out_header(r, "Set-Cookie", new_cookie);
     ngx_pfree(r->pool, new_cookie);
 }
 
@@ -1498,15 +1668,15 @@ clear_granting_cookie (ngx_http_request_t * r)
 static void
 clear_transfer_cookie (ngx_http_request_t * r)
 {
-    u_char *new_cookie = ngx_pcalloc(r->pool, PBC_4K);
+    char *new_cookie;
 
-    ngx_sprintf(new_cookie,
+    new_cookie = ap_psprintf(r->pool,
                               "%s=; domain=%s; path=/; expires=%s;%s",
                               PBC_CRED_TRANSFER_COOKIENAME,
                               PBC_ENTRPRS_DOMAIN,
                               EARLIEST_EVER, secure_cookie);
 
-    add_set_cookie(r, new_cookie);
+    add_out_header(r, "Set-Cookie", new_cookie);
     ngx_pfree(r->pool, new_cookie);
 }
 
@@ -1516,14 +1686,14 @@ clear_transfer_cookie (ngx_http_request_t * r)
 static void
 clear_pre_session_cookie (ngx_http_request_t * r)
 {
-    u_char *new_cookie = ngx_pcalloc(r->pool, PBC_4K);
+    char *new_cookie;
 
-    ngx_sprintf(new_cookie,
+    new_cookie = ap_psprintf(r->pool,
                               "%s=; path=/; expires=%s;%s",
                               PBC_PRE_S_COOKIENAME,
                               EARLIEST_EVER, secure_cookie);
 
-    add_set_cookie(r, new_cookie);
+    add_out_header(r, "Set-Cookie", new_cookie);
     ngx_pfree(r->pool, new_cookie);
 }
 
@@ -1531,24 +1701,24 @@ static int
 clear_session_cookie (ngx_http_request_t * r)
 {
     ngx_pubcookie_req_t *rr = ngx_http_get_module_ctx(r, ngx_pubcookie_module);
-    u_char *new_cookie;
+    char *new_cookie;
 
     if (NULL == rr)
         return NGX_OK;
 
-    new_cookie = ngx_pcalloc(r->pool, PBC_4K);
-    ngx_sprintf(new_cookie,
+    new_cookie = ap_psprintf(r->pool,
                               "%s=%s; path=/; expires=%s;%s",
                               make_session_cookie_name (r->pool,
                                                         PBC_S_COOKIENAME,
                                                         appid(r)),
                               PBC_CLEAR_COOKIE, EARLIEST_EVER,
                               secure_cookie);
-    add_set_cookie(r, new_cookie);
+    add_out_header(r, "Set-Cookie", new_cookie);
+    ngx_pfree(r->pool, new_cookie);
 
     if (NULL != rr->cred_transfer.data) {
         /* extra cookies (need cookie extensions) */
-        ngx_sprintf(new_cookie,
+        new_cookie = ap_psprintf(r->pool,
                                   "%s=%s; path=/; expires=%s;%s",
                                   make_session_cookie_name (r->pool,
                                                             PBC_CRED_COOKIENAME,
@@ -1556,10 +1726,10 @@ clear_session_cookie (ngx_http_request_t * r)
                                   PBC_CLEAR_COOKIE,
                                   EARLIEST_EVER, secure_cookie);
 
-        add_set_cookie(r, new_cookie);
+        add_out_header(r, "Set-Cookie", new_cookie);
+        ngx_pfree(r->pool, new_cookie);
     }
 
-    ngx_pfree(r->pool, new_cookie);
     return NGX_OK;
 }
 
@@ -1576,7 +1746,7 @@ do_end_session_redirect (ngx_http_request_t * r,
                          ngx_pubcookie_srv_t *scfg,
                          ngx_pubcookie_req_t *rr)
 {
-    u_char *refresh;
+    char *refresh;
     pc_req_log(r, "do_end_session_redirect: hello");
 
     clear_granting_cookie(r);
@@ -1584,11 +1754,7 @@ do_end_session_redirect (ngx_http_request_t * r,
     clear_session_cookie(r);
     set_no_cache_headers(r);
 
-    refresh = ngx_pcalloc(r->pool, PBC_4K);
-    if (NULL == refresh)
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;
-
-    ngx_snprintf(refresh, PBC_4K - 1, "%d;URL=%s?%s=%d&%s=%s&%s=%s",
+    refresh = ap_psprintf(r->pool, "%d;URL=%s?%s=%d&%s=%s&%s=%s",
                            PBC_REFRESH_TIME,
                            str2charp(r->pool, &scfg->login),
                            PBC_GETVAR_LOGOUT_ACTION,
@@ -1598,11 +1764,7 @@ do_end_session_redirect (ngx_http_request_t * r,
                            appid(r),
                            PBC_GETVAR_APPSRVID,
                            appsrvid(r));
-
-    rr->msg.data = ngx_pcalloc(r->pool, ngx_strlen(redirect_html) + ngx_strlen(refresh) + 4);
-    if (NULL == rr->msg.data)
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;
-    ngx_sprintf(rr->msg.data, redirect_html, refresh);
+    ap_rprintf(r, redirect_html, refresh);
     ngx_pfree(r->pool, refresh);
 
     return NGX_OK;
@@ -1619,9 +1781,11 @@ do_end_session_redirect (ngx_http_request_t * r,
  */
 
 static int
-stop_the_show (ngx_http_request_t *r, ngx_pubcookie_loc_t *cfg, ngx_pubcookie_req_t *rr)
+stop_the_show (ngx_http_request_t *r, ngx_pubcookie_srv_t *scfg,
+               ngx_pubcookie_loc_t *cfg, ngx_pubcookie_req_t *rr)
 {
-    u_char *msg, *admin;
+    const char *admin = "postmaster@this.server";
+    const char *msg = rr->stop_message ? rr->stop_message : "";
 
     pc_req_log(r, "stop_the_show: hello");
 
@@ -1630,15 +1794,8 @@ stop_the_show (ngx_http_request_t *r, ngx_pubcookie_loc_t *cfg, ngx_pubcookie_re
     clear_session_cookie(r);
     set_no_cache_headers(r);
 
-    msg = rr->stop_message.data;
-    if (NULL == msg)
-        msg = (u_char *) "";
-    admin = (u_char *) "postmaster@this.server";
-    rr->msg.data = ngx_pcalloc(r->pool, ngx_strlen(stop_html) + ngx_strlen(admin) + ngx_strlen(msg) + 10);
-    if (NULL == rr->msg.data) {
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;
-    }
-    ngx_sprintf(rr->msg.data, stop_html, admin, msg);
+    ap_rprintf(r, stop_html, admin, msg);
+    rr->status = NGX_HTTP_BAD_REQUEST;
 
     return NGX_OK;
 }
@@ -1766,42 +1923,6 @@ get_pre_s_from_cookie (ngx_http_request_t * r)
  *      </Location>
  */
 
-/**
- * get the post stuff 
- * @param r reuquest_rec
- * @return int 
- */
-static char *
-get_post_data (ngx_http_request_t * r, int post_len)
-{
-    char *buffer;
-    char *bp;
-    int rem = post_len;
-
-    if (rem <= 0)
-        return (char *) ngx_pstrdup(r->pool, &blank_str);
-
-    buffer = (char *) ngx_palloc (r->pool, post_len + 1);
-    *buffer = '\0';
-    bp = buffer;
-    /* FIXME */
-#if 0
-    if (ap_setup_client_block (r, REQUEST_CHUNKED_ERROR))
-        return (buffer);
-
-    if (ap_should_client_block (r)) {
-        int len;
-
-        while ((len = ap_get_client_block (r, bp, rem)) > 0) {
-            bp += len;
-            rem -= len;
-        }
-    }
-#endif
-    *bp = '\0';
-    return (buffer);
-}
-
 /*
  * Herein we deal with the redirect of the request to the login server
  * if it was only that simple ...
@@ -1813,10 +1934,10 @@ auth_failed_handler (ngx_http_request_t * r,
                      ngx_pubcookie_req_t *rr)
 {
     ngx_pool_t *p = r->pool;
-    char *refresh = ngx_pcalloc (p, PBC_1K);
-    char *pre_s = ngx_pcalloc (p, PBC_1K);
-    char *pre_s_cookie = ngx_pcalloc (p, PBC_1K);
-    char *g_req_cookie = ngx_pcalloc (p, PBC_4K);
+    char *refresh;
+    char *pre_s;
+    char *pre_s_cookie;
+    char *g_req_cookie;
     ngx_str_t g_req_contents;
     char *e_g_req_contents;
     #define get_hdr_in(R,H) (R->headers_in.H ? str2charp(R->pool, &R->headers_in.H->value) : NULL)
@@ -1855,11 +1976,10 @@ auth_failed_handler (ngx_http_request_t * r,
         char *argst;
         /* error out if length of GET args would cause a problem */
         if (r->args.len > PBC_MAX_GET_ARGS) {
-            rr->stop_message.data = ngx_pnalloc(p, 64);
-            ngx_sprintf (rr->stop_message.data,
+            rr->stop_message = ap_psprintf(p,
                              "GET arguments longer than supported.  (args length: %d)",
                              r->args.len);
-            stop_the_show (r, cfg, rr);
+            stop_the_show (r, scfg, cfg, rr);
             return (NGX_OK);
         }
 
@@ -1884,8 +2004,7 @@ auth_failed_handler (ngx_http_request_t * r,
     port = ap_get_server_port (r);
     if (port != 80 && port != 443 && !scfg->behind_proxy) {
         /* because of multiple passes through don't use r->hostname() */
-        host = ngx_pnalloc(p, ngx_strlen(ap_get_server_name(r)) + 8);
-        ngx_sprintf ((u_char *) host, "%s:%d", ap_get_server_name(r), port);
+        host = ap_psprintf(p, "%s:%d", ap_get_server_name(r), port);
     }
 
     if (!host) {
@@ -1900,8 +2019,8 @@ auth_failed_handler (ngx_http_request_t * r,
 
     if ((pre_sess_tok = get_pre_s_token (r)) == -1) {
         /* this is weird since we're already in a handler */
-        rr->stop_message.data = (u_char *) "Couldn't get pre session token. (Already in handler)";
-        stop_the_show (r, cfg, rr);
+        rr->stop_message = "Couldn't get pre session token. (Already in handler)";
+        stop_the_show (r, scfg, cfg, rr);
         return (NGX_OK);
     }
 
@@ -1976,7 +2095,7 @@ auth_failed_handler (ngx_http_request_t * r,
                    g_req_contents.len, g_req_contents.data);
 
     /* setup the client pull */
-    ngx_snprintf ((u_char *) refresh, PBC_1K - 1, "%d;URL=%s",
+    refresh = ap_psprintf (p, "%d;URL=%s",
                     PBC_REFRESH_TIME, scfg->login.data);
 
     /* the redirect for requests with POST args are  */
@@ -2013,18 +2132,18 @@ auth_failed_handler (ngx_http_request_t * r,
                                             appid(r), ME(r), 0,
                                             scfg->crypt_alg);
         if (NULL == pre_s) {
-            rr->stop_message.data = (u_char *) "Failure making pre-session cookie";
-            stop_the_show(r, cfg, rr);
+            rr->stop_message = "Failure making pre-session cookie";
+            stop_the_show(r, scfg, cfg, rr);
             return (NGX_OK);
         }
 
-        pre_s_cookie = ngx_pcalloc(p, PBC_4K);
-        ngx_snprintf((u_char *) pre_s_cookie, PBC_4K - 1,
+        pre_s_cookie = ap_psprintf(p,
                                     "%s=%s; path=%s;%s",
                                     PBC_PRE_S_COOKIENAME,
                                     pre_s, "/", secure_cookie);
 
-        add_set_cookie(r, (u_char *) pre_s_cookie);
+        add_out_header(r, "Set-Cookie", pre_s_cookie);
+        ngx_pfree(p, pre_s_cookie);
     }
 
     /* load and send the header */
@@ -2034,9 +2153,9 @@ auth_failed_handler (ngx_http_request_t * r,
     /* multipart/form-data is not supported */
     if (ctype
         && !strncmp (ctype, "multipart/form-data",
-                     strlen ("multipart/form-data"))) {
-        rr->stop_message.data = (u_char *) "multipart/form-data not allowed";
-        stop_the_show (r, cfg, rr);
+                     sizeof("multipart/form-data")-1)) {
+        rr->stop_message = "multipart/form-data not allowed";
+        stop_the_show (r, scfg, cfg, rr);
         return (NGX_OK);
     }
 
@@ -2045,15 +2164,13 @@ auth_failed_handler (ngx_http_request_t * r,
 
     post_data = "";
     if (lenp) {
-        int post_data_len;
-        if (((post_data_len = strtol (lenp, NULL, 10)) <= 0) ||
-            (post_data_len > MAX_POST_DATA) ||
-            (!(post_data = get_post_data (r, post_data_len)))) {
-            rr->stop_message.data = ngx_pnalloc(p, 64);
-            ngx_sprintf (rr->stop_message.data,
+        int post_data_len = r->headers_in.content_length_n;
+        if (post_data_len <= 0 || post_data_len > MAX_POST_DATA ||
+            NULL == (post_data = get_post_data (r, post_data_len))) {
+            rr->stop_message = ap_psprintf(p,
                              "Invalid POST data. (POST data length: %d)",
                              post_data_len);
-            stop_the_show (r, cfg, rr);
+            stop_the_show (r, scfg, cfg, rr);
             return (NGX_OK);
         }
     }
@@ -2061,7 +2178,7 @@ auth_failed_handler (ngx_http_request_t * r,
 
     if (!scfg->use_post) {
         /* GET method puts granting request in a cookie */
-        ngx_snprintf ((u_char *) g_req_cookie, PBC_4K - 1,
+        g_req_cookie = ap_psprintf (p,
                      "%s=%s; domain=%s; path=/;%s",
                      PBC_G_REQ_COOKIENAME,
                      e_g_req_contents, PBC_ENTRPRS_DOMAIN, secure_cookie);
@@ -2069,7 +2186,8 @@ auth_failed_handler (ngx_http_request_t * r,
         pc_req_log (r,
                        "g_req length %d cookie: %s", strlen (g_req_cookie),
                        g_req_cookie);
-        add_set_cookie (r, (u_char *) g_req_cookie);
+        add_out_header (r, "Set-Cookie", g_req_cookie);
+        ngx_pfree(p, g_req_cookie);
 
         refresh_e = ap_os_escape_path (p, refresh, 0);
 
@@ -2084,16 +2202,13 @@ auth_failed_handler (ngx_http_request_t * r,
        in a post to the login server. */
 
     if (scfg->use_post) {
-        u_char cp[12] = {0};
+        u_char cp[12];
         if ((port == 80 || port == 443) && !scfg->behind_proxy)
-            cp[0] = '\0';
+            *cp = '\0';
         else
-            ngx_sprintf (cp, ":%d", port);
+            ngx_sprintf (cp, ":%d%Z", port);
 
-        rr->msg.data = ngx_pcalloc(p, PBC_4K);
-
-        ngx_snprintf(rr->msg.data, PBC_4K - 1,
-                    post_request_html,
+        ap_rprintf(r, post_request_html,
                     str2charp(p, &scfg->login),
                     e_g_req_contents,
                     encode_get_args(r, post_data, 1),
@@ -2103,9 +2218,7 @@ auth_failed_handler (ngx_http_request_t * r,
                     );
 
     } else if (ctype && (tenc || lenp || r->method == NGX_HTTP_POST)) {
-        rr->msg.data = ngx_pcalloc(p, PBC_4K);
-        ngx_snprintf (rr->msg.data, PBC_4K - 1,
-                    get_post_request_html,
+        ap_rprintf(r, get_post_request_html,
                     str2charp(p, &scfg->login),
                     encode_get_args(r, post_data, 1),
                     str2charp(p, &scfg->login),
@@ -2115,10 +2228,9 @@ auth_failed_handler (ngx_http_request_t * r,
     } else {
 #ifdef REDIRECT_IN_HEADER
 /* warning, this will break some browsers */
-        rr->msg.data = nullpage_html;
+        ap_rprintf(r, nullpage_html);
 #else
-        rr->msg.data = ngx_pcalloc(p, ngx_strlen(redirect_html) + ngx_strlen(refresh) + 8);
-        ngx_sprintf(rr->msg.data, redirect_html, refresh);
+        ap_rprintf(r, redirect_html, refresh);
 #endif
     }
 
@@ -2163,7 +2275,7 @@ pubcookie_user_hook (ngx_http_request_t * r)
         pc_req_log(r, " .. user_hook: user failed");
         if (rr->failed == PBC_BAD_G_STATE) {
             pc_req_log(r, " .. user_hook: Can't use Granting cookie");
-            stop_the_show(r, cfg, rr);
+            stop_the_show(r, scfg, cfg, rr);
             return DONE;
         } else if (rr->failed == PBC_BAD_USER) {
             pc_req_log(r, " .. user_hook: bad user");
@@ -2448,9 +2560,8 @@ pubcookie_user (ngx_http_request_t * r,
                            cookie_data->broken.pre_sess_token,
                            pre_sess_from_cookie, get_req_uri(r));
                 rr->failed = PBC_BAD_AUTH;
-                #define STOP_MESSAGE_FMT_1 "Couldn't decode pre-session cookie. (from G: %d from PRE_S: %d)"
-                rr->stop_message.data = ngx_pnalloc(r->pool, sizeof(STOP_MESSAGE_FMT_1) + 6 + 6);
-                ngx_sprintf(rr->stop_message.data, STOP_MESSAGE_FMT_1,
+                rr->stop_message = ap_psprintf(r->pool,
+                            "Couldn't decode pre-session cookie. (from G: %d from PRE_S: %d)",
                             cookie_data->broken.pre_sess_token, pre_sess_from_cookie);
                 rr->redir_reason_no = PBC_RR_BADPRES_CODE;
                 return NGX_OK;
@@ -2474,7 +2585,7 @@ pubcookie_user (ngx_http_request_t * r,
         /* Make sure we really got a user (unless noprompt) */
         if (!*rr->user_name.data && cfg->noprompt <= 0) {
             pc_req_log(r, "No user and not a noprompt");
-            rr->stop_message.data = (u_char *) "Required user login didn't happen";
+            rr->stop_message = "Required user login didn't happen";
             rr->failed = PBC_BAD_G_STATE;
             return (DONE);
         }
@@ -2526,7 +2637,7 @@ pubcookie_user (ngx_http_request_t * r,
             pc_req_log(r,
                        "Force reauth didn't get a re-auth: %c", cookie_data->broken.version[3]);
             /* Send out bad session_reauth error */
-            rr->stop_message.data = (u_char *) "Required Session Reauthentication didn't happen";
+            rr->stop_message = "Required Session Reauthentication didn't happen";
             rr->failed = PBC_BAD_G_STATE;
             return (DONE);
         }
@@ -2641,7 +2752,7 @@ pubcookie_user (ngx_http_request_t * r,
 
         /* set a random KRB5CCNAME */
         krb5ccname = ngx_pnalloc(p, 64);
-        ngx_sprintf((u_char *) krb5ccname, "/tmp/k5cc_%d_%s", getpid(), rr->user.data);
+        ngx_sprintf((u_char *) krb5ccname, "/tmp/k5cc_%d_%V%Z", getpid(), &rr->user);
         f.fd = NGX_INVALID_FILE;
         f.sys_offset = 0;
         if (!res) {
@@ -2680,64 +2791,6 @@ pubcookie_user (ngx_http_request_t * r,
 /****************************************
  * Authentication handler
  */
-
-static ngx_pubcookie_req_t *
-pubcookie_setup_request (ngx_http_request_t *r)
-{
-    ngx_pubcookie_srv_t *scfg = ngx_http_get_module_srv_conf(r, ngx_pubcookie_module);
-    ngx_pubcookie_req_t *rr = ngx_http_get_module_ctx(r, ngx_pubcookie_module);
-
-    scfg->log = r->connection->log;
-    scfg->pool = r->pool;
-
-    if (NULL == rr) {
-        if (NULL == (rr = ngx_pcalloc(r->pool, sizeof(ngx_pubcookie_req_t)))) {
-            return NULL;
-        }
-        if (ngx_array_init(&rr->notes, r->pool, 4, sizeof(ngx_table_elt_t)) != NGX_OK) {
-            return NULL;
-        }
-        ngx_http_set_ctx(r, rr, ngx_pubcookie_module);
-        rr->user_name = blank_str;
-    }
-
-    return rr;
-}
-
-static ngx_int_t
-pubcookie_finish_request (ngx_http_request_t *r)
-{
-    ngx_pubcookie_srv_t *scfg = ngx_http_get_module_srv_conf(r, ngx_pubcookie_module);
-    ngx_pubcookie_req_t *rr = ngx_http_get_module_ctx(r, ngx_pubcookie_module);
-    ngx_buf_t *b;
-    ngx_chain_t out;
-    u_char *msg;
-    int len;
-
-    if (NULL == rr || NULL == rr->msg.data)
-        return NGX_DECLINED;
-
-    msg = rr->msg.data;
-    len = ngx_strlen(msg);
-
-    r->headers_out.status = NGX_HTTP_OK;
-    r->headers_out.content_length_n = len;
-    r->headers_out.last_modified_time = r->start_sec;
-
-    r->headers_out.content_type = pbc_content_type;
-    r->headers_out.content_type_len = pbc_content_type.len;
-
-    ngx_http_send_header(r);
-
-    if (NULL == (b = ngx_create_temp_buf(r->pool, len)))
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;
-
-    b->last = ngx_cpymem(b->last, msg, len);
-    b->last_buf = 1;
-    out.buf = b;
-    out.next = NULL;
-    return ngx_http_output_filter(r, &out);
-}
 
 static ngx_int_t
 ngx_pubcookie_authz_handler(ngx_http_request_t *r)
@@ -2808,6 +2861,57 @@ ngx_pubcookie_init(ngx_conf_t *cf)
  *  POST handler
  */
 
+/**
+ * get the post stuff 
+ * @param r reuquest_rec
+ * @return int 
+ */
+static void dummy_body_handler (ngx_http_request_t *r) {}
+
+static char *
+get_post_data (ngx_http_request_t * r, int post_len)
+{
+    char *buffer;
+    char *bp;
+    ngx_int_t rc;
+    ngx_chain_t *chain;
+    ngx_buf_t *buf;
+    int len;
+
+    post_len = r->headers_in.content_length_n;
+    if (post_len <= 0)
+        return ap_pstrdup(r->pool, "");
+
+    r->request_body_in_file_only = 0;
+    r->request_body_in_single_buf = 1;
+    rc = ngx_http_read_client_request_body(r, dummy_body_handler);
+    if (rc >= NGX_HTTP_SPECIAL_RESPONSE) {
+        ngx_http_finalize_request(r, rc);
+        return NULL;
+    }
+
+    if (NULL == (bp = buffer = (char *) ngx_pnalloc (r->pool, post_len + 1))) {
+        ngx_http_finalize_request(r, NGX_HTTP_INTERNAL_SERVER_ERROR);
+        return NULL;
+    }
+
+    for (chain = r->request_body->bufs; NULL != chain; chain = chain->next) {
+        if (chain->buf->in_file) {
+            pc_req_log(r, "ERROR: please increase client_buffer_size");
+            ngx_http_finalize_request(r, NGX_HTTP_INTERNAL_SERVER_ERROR);
+            return NULL;
+        }
+        len = chain->buf->last - chain->buf->pos;
+        if (len > 0) {
+            ngx_memcpy(bp, chain->buf->pos, len);
+            bp += len;
+        }
+    }
+
+    *bp = '\0';
+    return (buffer);
+}
+
 /*
  * Encode the args
  */
@@ -2853,7 +2957,6 @@ static char *encode_get_args (request_rec *r, char *in, int ec)
     return (enc);
 }
 
-#if 0
 /*
  * entity encode some post data
  */
@@ -2944,8 +3047,8 @@ static void scan_args (request_rec *r, table *argtbl, char *arg)
     p = arg;
 
     while (p) {
-        if (q = strchr (p, '&')) *q++ = '\0';
-        if (s = strchr (p, '=')) *s++ = '\0';
+        if ((q = strchr (p, '&'))) *q++ = '\0';
+        if ((s = strchr (p, '='))) *s++ = '\0';
         else s = "";
 
         decode_data (s);
@@ -2999,7 +3102,7 @@ static char *verify_url(request_rec *r, char *in, int ec)
     /* the login may have turned our pluses to spaces */
     for (e=s; *e; e++) if (*e==' ') *e = '+';
     ap_log_rerror (PC_LOG_DEBUG, r, "verify-url decoding: %s", s);
-    if (!libpbc_base64_decode (r->pool, (unsigned char *) s,
+    if (!libpbc_base64_decode (r, (unsigned char *) s,
                                  (unsigned char *) dpath, &dpathl)) {
           ap_log_rerror (PC_LOG_ERR, r,
                          "DEC path: libpbc_base64_decode() failed");
@@ -3053,7 +3156,6 @@ static char *verify_url(request_rec *r, char *in, int ec)
     return (enc);
 }
 
-
 /* verify a base64 string. return 1 on OK, Truncate at error. */
 
 static int verify_base64(request_rec *r, char *in)
@@ -3069,25 +3171,22 @@ static int verify_base64(request_rec *r, char *in)
     }
     return (1);
 }
-#endif
 
 /* Handle the granting reply */
 
 static ngx_int_t
-pubcookie_post_handler (ngx_http_request_t * r)
+pubcookie_handle_post_reply (ngx_http_request_t * r)
 {
-    ngx_pubcookie_req_t *rr = pubcookie_setup_request(r);
-    rr->msg.data = (u_char *) "THIS IS A POST !";
-    return pubcookie_finish_request(r);
-#if 0
+    ngx_pubcookie_req_t *rr = ngx_http_get_module_ctx(r, ngx_pubcookie_module);
+    ngx_pubcookie_loc_t *cfg = ngx_http_get_module_loc_conf(r, ngx_pubcookie_module);
+    ngx_pubcookie_srv_t *scfg = ngx_http_get_module_srv_conf(r, ngx_pubcookie_module);
     ngx_pool_t *p = r->pool;
     table *args = ap_make_table (r->pool, 5);
     const char *greply, *creply, *pdata;
     char *arg;
     char *a;
-    const char *lenp = get_hdr_in(r,content_length);
     char *post_data;
-    char *gr_cookie, *cr_cookie;
+    char *gr_cookie, *cr_cookie = "";
     const char *r_url;
 
     pc_req_log(r, "login_reply_handler: hello");
@@ -3100,20 +3199,19 @@ pubcookie_post_handler (ngx_http_request_t * r)
         arg = str2charp (p, &r->args);
         scan_args (r, args, arg);
     }
-    if (lenp) {
-        int post_data_len;
-        if (((post_data_len = strtol (lenp, NULL, 10)) > 0) &&
-            ((post_data = get_post_data (r, post_data_len)))) {
-            scan_args (r, args, post_data);
-        }
+    if (r->headers_in.content_length_n > 0) {
+        post_data = get_post_data (r, r->headers_in.content_length_n);
+        if (NULL == post_data)
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        scan_args (r, args, post_data);
     }
 
     greply = ap_table_get (args, PBC_G_COOKIENAME);
     if (!greply) {
         /* Send out bad call error */
-        rr->stop_message = ap_pstrdup (p, "No granting reply");
+        rr->stop_message = "No granting reply";
         stop_the_show (r, scfg, cfg, rr);
-        return (OK);
+        return (NGX_OK);
     }
     verify_base64(r, (char*)greply);
 
@@ -3125,7 +3223,7 @@ pubcookie_post_handler (ngx_http_request_t * r)
         /* Send out bad call error */
         ap_log_rerror (PC_LOG_ERR, r,
                        "bad redirect url: %s", r_url);
-        rr->stop_message = ap_pstrdup (p, "Invalid relay URL");
+        rr->stop_message = "Invalid relay URL";
         stop_the_show (r, scfg, cfg, rr);
         return (OK);
     }
@@ -3155,9 +3253,8 @@ pubcookie_post_handler (ngx_http_request_t * r)
         arg = (char*) r_url;
     }
     /* make sure there are no newlines in the redirect location */
-    if (a=strchr(arg,'\n')) *a = '\0';
-    if (a=strchr(arg,'\r')) *a = '\0';
-
+    if ((a=strchr(arg,'\n'))) *a = '\0';
+    if ((a=strchr(arg,'\r'))) *a = '\0';
 
     if (*pdata) {
         char *v, *t;
@@ -3174,17 +3271,16 @@ pubcookie_post_handler (ngx_http_request_t * r)
                     arg);
 
         while (post_data) {
-            if (a = strchr (post_data, '&')) *a++ = '\0';
+            if ((a = strchr (post_data, '&'))) *a++ = '\0';
             if (*post_data) {
                 int na;
 
-                if (v = strchr (post_data, '=')) *v++ = '\0';
+                if ((v = strchr (post_data, '='))) *v++ = '\0';
                 for (t = v; t&&*t; t++) if (*t == '+') *t = ' ';
                 decode_data (post_data);
                 decode_data (v);
 
                 ap_rprintf (r, post_reply_arg_html, encode_data(r, post_data), encode_data(r, v)); 
-
             }
             post_data = a;
         }
@@ -3196,11 +3292,22 @@ pubcookie_post_handler (ngx_http_request_t * r)
         ap_table_add (HDRS_OUT, "Set-Cookie", gr_cookie);
         if (creply)  ap_table_add (HDRS_OUT, "Set-Cookie", cr_cookie);
         ap_table_add (HDRS_OUT, "Location", arg);
-        return (NGX_HTTP_MOVED_TEMPORARILY);
+        ap_rprintf(r, " ");
+        rr->status = NGX_HTTP_MOVED_TEMPORARILY;
+        return (OK);
     }
 
-    return (NGX_OK);
-#endif
+    return (OK);
+}
+
+static ngx_int_t
+pubcookie_post_handler (ngx_http_request_t * r)
+{
+    ngx_int_t rc, rc2;
+    pubcookie_setup_request(r);
+    rc = pubcookie_handle_post_reply(r);
+    rc2 = pubcookie_finish_request(r);
+    return (rc2 == NGX_DECLINED ? rc : rc2);
 }
 
 /* SVN Id: $Id$ */

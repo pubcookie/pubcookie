@@ -72,23 +72,6 @@ extern int pubcookie_super_debug;
 
 #define request_rec ngx_http_request_t
 #define ap_palloc ngx_palloc
-#define ap_table_add(tbl,hdr,val) add_out_header(r,hdr,val)
-
-#define ap_rprintf(r,args...) \
-    ({ \
-        ngx_http_request_t * _r = (r); \
-        ngx_pubcookie_req_t * _rr = ngx_http_get_module_ctx(_r_, ngx_pubcookie_module); \
-        u_char *_p; \
-        int _n = 0; \
-        _p = _rr->stop_message.data; \
-        if (_p) \
-            _n = ngx_strlen(_p); \
-        else \
-            _p = _rr->stop_message.data = ngx_palloc(_r->pool, PBC_4K); \
-        *(ngx_snprintf(_p + _n, PBC_4K - _n - 1, args)) = '\0'; \
-        (_p); \
-    })
-
 
 static inline char *
 str2charp (ngx_pool_t *pool, ngx_str_t *ns)
@@ -110,13 +93,13 @@ str2charp (ngx_pool_t *pool, ngx_str_t *ns)
     return (char *) dst;
 }
 
-static inline u_char *
+static inline char *
 __ap_pstrdup (ngx_pool_t *pool, const char *src)
 {
     ngx_str_t ns;
     ns.data = (u_char *) src;
     ns.len = -1;
-    return (u_char *) str2charp(pool, &ns);
+    return str2charp(pool, &ns);
 }
 
 #define ap_pstrdup(p,s) __ap_pstrdup(p,s)
@@ -126,6 +109,7 @@ __ap_pstrdup (ngx_pool_t *pool, const char *src)
  */
 
 #define DONE NGX_DONE
+#define OK NGX_OK
 
 #define ME(r) ap_get_server_name(r)
 
@@ -205,9 +189,11 @@ typedef struct
     ngx_str_t user_name;
     char creds;
     pbc_cookie_data *cookie_data;
-    ngx_str_t stop_message;
-    ngx_str_t cred_transfer;
+    char *stop_message;
+    int status;
+    int no_cache_set;
     ngx_str_t msg;
+    ngx_str_t cred_transfer;
     ngx_str_t app_path;
     ngx_str_t server_name_tmp;
     ngx_str_t uri_tmp;
