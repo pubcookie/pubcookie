@@ -52,7 +52,7 @@ extern int pubcookie_super_debug;
             int _v = (v); \
             ngx_log_t *_l = (l); \
             _v = pubcookie_super_debug ? NGX_LOG_WARN : NGX_LOG_DEBUG; \
-            if (_l->log_level >= _v) \
+            if (pubcookie_super_debug || _l->log_level >= _v) \
                 ngx_log_error_core(_v, _l, 0, args); \
         } while(0)
 
@@ -185,8 +185,8 @@ typedef struct
     int failed;
     int redir_reason_no;
     int has_granting;
-    ngx_str_t user;
     ngx_str_t user_name;
+    ngx_str_t user_full;
     char creds;
     pbc_cookie_data *cookie_data;
     char *stop_message;
@@ -197,7 +197,7 @@ typedef struct
     ngx_str_t app_path;
     ngx_str_t server_name_tmp;
     ngx_str_t uri_tmp;
-    ngx_array_t notes;
+    ngx_array_t *notes;
 } ngx_pubcookie_req_t;
 
 /*
