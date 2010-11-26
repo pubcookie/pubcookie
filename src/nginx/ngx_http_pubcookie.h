@@ -95,9 +95,8 @@ typedef struct
     ngx_str_t msg;
     ngx_str_t cred_transfer;
     ngx_str_t app_path;
-    ngx_str_t server_name_tmp;
-    ngx_str_t uri_tmp;
     ngx_array_t *notes;
+    char *server_name_tmp;
 } ngx_pubcookie_req_t;
 
 /***********************************

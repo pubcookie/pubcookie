@@ -257,11 +257,11 @@ static char *
 ap_get_server_name (ngx_http_request_t *r)
 {
     ngx_pubcookie_req_t *rr = ngx_http_get_module_ctx(r, ngx_pubcookie_module);
-    if (NULL == rr->server_name_tmp.data) {
-        ngx_http_core_srv_conf_t  *cscf = ngx_http_get_module_srv_conf(r, ngx_http_core_module);
-        ngx_strcat3(r->pool, &rr->server_name_tmp, &cscf->server_name, NULL, NULL);
+    if (! rr->server_name_tmp) {
+        ngx_http_core_srv_conf_t *core_scf = ngx_http_get_module_srv_conf(r, ngx_http_core_module);
+        rr->server_name_tmp = str2charp(r->pool, &core_scf->server_name);
     }
-    return (char *) rr->server_name_tmp.data;
+    return rr->server_name_tmp;
 }
 
 static int
@@ -290,22 +290,6 @@ ap_get_server_port (ngx_http_request_t *r)
     }
 
     return (port > 0 && port < 65536) ? (int) port : NGX_ERROR;
-}
-
-static char *
-ap_get_method_name (ngx_http_request_t *r)
-{
-    return str2charp(r->pool, &r->main->method_name);
-}
- 
-static char *
-get_req_uri (ngx_http_request_t *r)
-{
-    ngx_pubcookie_req_t *rr = ngx_http_get_module_ctx(r, ngx_pubcookie_module);
-    if (NULL == rr->uri_tmp.data) {
-        ngx_strcat3(r->pool, &rr->uri_tmp, &r->uri, NULL, NULL);
-    }
-    return (char *) rr->uri_tmp.data;
 }
 
 static u_char *
@@ -611,8 +595,7 @@ appid (ngx_http_request_t * r)
     ngx_str_t res;
 
     if (NULL == rr->app_path.data) {
-        ngx_http_request_t *rmain = main_rrec(r);
-        u_char *main_uri_path = (u_char *) get_req_uri(rmain);
+        u_char *main_uri_path = (u_char *) str2charp(r->pool, &(main_rrec(r)->uri));
         rr->app_path.data = get_app_path(r, main_uri_path);
     }
 
@@ -1132,14 +1115,14 @@ get_pre_s_from_cookie (ngx_http_request_t * r)
                                               scfg->crypt_alg);
         if (cookie_data) break;
         pc_req_log(r,
-                       "INFO: get_pre_s_from_cookie: can't unbundle pre_s cookie uri: %s\n",
-                       get_req_uri(r));
+                       "INFO: get_pre_s_from_cookie: can't unbundle pre_s cookie uri: %V\n",
+                       &r->uri);
         ccnt++;
     }
     if (!cookie_data) {
         pc_req_log(r,
-                       "INFO: get_pre_s_from_cookie: no pre_s cookie, uri: %s\n",
-                       get_req_uri(r));
+                       "INFO: get_pre_s_from_cookie: no pre_s cookie, uri: %V\n",
+                       &r->uri);
         return (-1);
     }
 
@@ -1266,8 +1249,8 @@ auth_failed_handler (ngx_http_request_t * r,
         libpbc_base64_encode (r, mr->uri.data,
                               (u_char *) b64uri, mr->uri.len);
         pc_req_log (r,
-                       "Post URI before encoding length %d, string: %s",
-                       mr->uri.len, get_req_uri(mr));
+                       "Post URI before encoding length %d, string: %V",
+                       mr->uri.len, &mr->uri);
         pc_req_log (r,
                        "Post URI after encoding length %d, string: %s",
                        strlen (b64uri), b64uri);
@@ -1287,7 +1270,7 @@ auth_failed_handler (ngx_http_request_t * r,
                  PBC_GETVAR_VERSION,
                  vstr,
                  PBC_GETVAR_METHOD,
-                 ap_get_method_name(r),
+                 str2charp(p, &r->main->method_name),
                  PBC_GETVAR_HOST,
                  host ? host : ap_get_server_name(r),
                  PBC_GETVAR_URI,
@@ -1295,7 +1278,7 @@ auth_failed_handler (ngx_http_request_t * r,
                  PBC_GETVAR_ARGS,
                  args,
                  PBC_GETVAR_REAL_HOST,
-                 ap_get_server_name(r) /*FIXME:r->server->server_hostname*/,
+                 ap_get_server_name(r), /*FIXME: r->server->server_hostname*/
                  PBC_GETVAR_APPSRV_ERR,
                  rr->redir_reason_no,
                  PBC_GETVAR_FILE_UPLD,
@@ -1582,7 +1565,7 @@ pubcookie_user (ngx_http_request_t * r,
     int gcnt = 0;
     int scnt = 0;
 
-    pc_req_log(r, "pubcookie_user: going to check uri: %s creds: %c", get_req_uri(r), rr->creds);
+    pc_req_log(r, "pubcookie_user: going to check uri: %V creds: %c", &r->uri, rr->creds);
 
     /* maybe dump the directory and server recs */
     dump_recs(r, cfg, scfg);
@@ -1593,7 +1576,7 @@ pubcookie_user (ngx_http_request_t * r,
 
     if (! r->connection->ssl)
     {
-        pc_req_log(r, "Not SSL; uri: %s appid: %s", get_req_uri(r), appid (r));
+        pc_req_log(r, "Not SSL; uri: %V appid: %s", &r->uri, appid (r));
         rr->failed = PBC_BAD_AUTH;
         rr->redir_reason_no = PBC_RR_NOGORS_CODE;
         return NGX_OK;
@@ -1605,8 +1588,8 @@ pubcookie_user (ngx_http_request_t * r,
     }
 
     pc_req_log(r,
-               "pubcookie_user: about to look for some cookies; current uri: %s",
-               get_req_uri(r));
+               "pubcookie_user: about to look for some cookies; current uri: %V",
+               &r->uri);
 
     /* check if we hav a granting cookie's and a pre-session cookie.
        when using GET method we need the pair (pre sess and granting), but 
@@ -1623,8 +1606,8 @@ pubcookie_user (ngx_http_request_t * r,
         if (cookie_data)
             break;
         pc_req_log(r,
-                   "can't unbundle G cookie, it's probably not for us; uri: %s\n",
-                   get_req_uri(r));
+                   "can't unbundle G cookie, it's probably not for us; uri: %V\n",
+                   &r->uri);
         gcnt++;
         clear_granting_cookie(r);
     }
@@ -1647,8 +1630,8 @@ pubcookie_user (ngx_http_request_t * r,
 
             /* try 'fixing' the cookie */
             pc_req_log(r,
-                       "retring failed unbundle of S cookie; uri: %s\n",
-                       get_req_uri(r));
+                       "retring failed unbundle of S cookie; uri: %V\n",
+                       &r->uri);
             ckfix = ngx_pnalloc(p, cookie_len + 3);
             strcpy(ckfix, cookie);
             strcat(ckfix, "==");
@@ -1658,8 +1641,8 @@ pubcookie_user (ngx_http_request_t * r,
                 break;
 
             pc_req_log(r,
-                       "still can't unbundle S cookie; uri: %s\n",
-                       get_req_uri(r));
+                       "still can't unbundle S cookie; uri: %V\n",
+                       &r->uri);
             scnt++;
         }
 
@@ -1719,10 +1702,10 @@ pubcookie_user (ngx_http_request_t * r,
 
             if (libpbc_check_exp(r, cookie_data->broken.create_ts, cfg->hard_exp) == PBC_FAIL) {
                 pc_req_log(r,
-                           "S cookie hard expired; user: %s cookie timestamp: %d timeout: %d now: %d uri: %s\n",
+                           "S cookie hard expired; user: %s cookie timestamp: %d timeout: %d now: %d uri: %V\n",
                            cookie_data->broken.user,
                            cookie_data->broken.create_ts,
-                           cfg->hard_exp, pbc_time (NULL), get_req_uri(r));
+                           cfg->hard_exp, pbc_time (NULL), &r->uri);
                 rr->failed = PBC_BAD_AUTH;
                 rr->redir_reason_no = PBC_RR_SHARDEX_CODE;
                 return NGX_OK;
@@ -1732,10 +1715,10 @@ pubcookie_user (ngx_http_request_t * r,
                 libpbc_check_exp(r, cookie_data->broken.last_ts,
                                   cfg->inact_exp) == PBC_FAIL) {
                 pc_req_log(r,
-                           "S cookie inact expired; user: %s cookie timestamp %d timeout: %d now: %d uri: %s\n",
+                           "S cookie inact expired; user: %s cookie timestamp %d timeout: %d now: %d uri: %V\n",
                            cookie_data->broken.user,
                            cookie_data->broken.last_ts,
-                           cfg->inact_exp, pbc_time (NULL), get_req_uri(r));
+                           cfg->inact_exp, pbc_time (NULL), &r->uri);
                 rr->failed = PBC_BAD_AUTH;
                 rr->redir_reason_no = PBC_RR_SINAEX_CODE;
                 return NGX_OK;
@@ -1769,8 +1752,8 @@ pubcookie_user (ngx_http_request_t * r,
         } else {                /* hav S cookie */
 
             pc_req_log(r,
-                       "No G or S cookie; uri: %s appid: %s sess_cookie_name: %s",
-                       get_req_uri(r), appid (r), sess_cookie_name);
+                       "No G or S cookie; uri: %V appid: %s sess_cookie_name: %s",
+                       &r->uri, appid (r), sess_cookie_name);
             rr->failed = PBC_BAD_AUTH;
             rr->redir_reason_no = PBC_RR_NOGORS_CODE;
             return NGX_OK;
@@ -1787,8 +1770,8 @@ pubcookie_user (ngx_http_request_t * r,
             clear_pre_session_cookie (r);
 
         pc_req_log(r,
-                   "pubcookie_user: has granting; current uri is: %s",
-                   get_req_uri(r));
+                   "pubcookie_user: has granting; current uri is: %V",
+                   &r->uri);
 
         /* If GET, check pre_session cookie */
         if (!scfg->use_post) {
@@ -1796,11 +1779,11 @@ pubcookie_user (ngx_http_request_t * r,
             pc_req_log(r, "pubcookie_user: ret from get_pre_s_from_cookie");
             if (cookie_data->broken.pre_sess_token !=
                 pre_sess_from_cookie) {
-                pc_req_log(r, "pubcookie_user, pre session tokens mismatched, uri: %s",
-                           get_req_uri(r));
-                pc_req_log(r, "pubcookie_user, pre session from G: %d PRE_S: %d, uri: %s",
+                pc_req_log(r, "pubcookie_user, pre session tokens mismatched, uri: %V",
+                           &r->uri);
+                pc_req_log(r, "pubcookie_user, pre session from G: %d PRE_S: %d, uri: %V",
                            cookie_data->broken.pre_sess_token,
-                           pre_sess_from_cookie, get_req_uri(r));
+                           pre_sess_from_cookie, &r->uri);
                 rr->failed = PBC_BAD_AUTH;
                 rr->stop_message = ap_psprintf(r->pool,
                             "Couldn't decode pre-session cookie. (from G: %d from PRE_S: %d)",
@@ -1814,8 +1797,8 @@ pubcookie_user (ngx_http_request_t * r,
         /* server loop is required, this just speeds up that loop */
         if (strncmp (cookie, PBC_X_STRING, PBC_XS_IN_X_STRING) == 0) {
             pc_req_log(r,
-                       "pubcookie_user: 'speed up that loop' logic; uri is: %s\n",
-                       get_req_uri(r));
+                       "pubcookie_user: 'speed up that loop' logic; uri is: %V\n",
+                       &r->uri);
 
             rr->failed = PBC_BAD_AUTH;
             rr->redir_reason_no = PBC_RR_DUMMYLP_CODE;
@@ -1886,10 +1869,10 @@ pubcookie_user (ngx_http_request_t * r,
 
         if (libpbc_check_exp(r, cookie_data->broken.create_ts, PBC_GRANTING_EXPIRE) == PBC_FAIL) {
             pc_req_log(r,
-                       "pubcookie_user: G cookie expired by %ld; user: %s create: %ld uri: %s",
+                       "pubcookie_user: G cookie expired by %ld; user: %s create: %ld uri: %V",
                        pbc_time(NULL) - cookie_data->broken.create_ts -
                        PBC_GRANTING_EXPIRE, cookie_data->broken.user,
-                       cookie_data->broken.create_ts, get_req_uri(r));
+                       cookie_data->broken.create_ts, &r->uri);
             rr->failed = PBC_BAD_AUTH;
             rr->redir_reason_no = PBC_RR_GEXP_CODE;
             return NGX_OK;
@@ -1902,8 +1885,8 @@ pubcookie_user (ngx_http_request_t * r,
                          cookie_data->broken.appid,
                          sizeof(cookie_data->broken.appid) - 1) != 0) {
         pc_req_log(r,
-                   "pubcookie_user: wrong appid; current: %s cookie: %s uri: %s",
-                   appid (r), cookie_data->broken.appid, get_req_uri(r));
+                   "pubcookie_user: wrong appid; current: %s cookie: %s uri: %V",
+                   appid (r), cookie_data->broken.appid, &r->uri);
         rr->failed = PBC_BAD_AUTH;
         rr->redir_reason_no = PBC_RR_WRONGAPPID_CODE;
         return NGX_OK;
@@ -1914,9 +1897,9 @@ pubcookie_user (ngx_http_request_t * r,
                      cookie_data->broken.appsrvid,
                      sizeof(cookie_data->broken.appsrvid) - 1) != 0) {
         pc_req_log(r,
-                   "pubcookie_user: wrong app server id; current: %s cookie: %s uri: %s",
+                   "pubcookie_user: wrong app server id; current: %s cookie: %s uri: %V",
                    appsrvid (r), cookie_data->broken.appsrvid,
-                   get_req_uri(r));
+                   &r->uri);
         rr->failed = PBC_BAD_AUTH;
         rr->redir_reason_no = PBC_RR_WRONGAPPSRVID_CODE;
         return NGX_OK;
@@ -1925,8 +1908,8 @@ pubcookie_user (ngx_http_request_t * r,
     /* check version id */
     if (libpbc_check_version(r, cookie_data) == PBC_FAIL) {
         pc_req_log(r,
-                   "pubcookie_user: wrong version id; module: %d cookie: %d uri: %s",
-                   PBC_VERSION, cookie_data->broken.version, get_req_uri(r));
+                   "pubcookie_user: wrong version id; module: %d cookie: %d uri: %V",
+                   PBC_VERSION, cookie_data->broken.version, &r->uri);
         rr->failed = PBC_BAD_AUTH;
         rr->redir_reason_no = PBC_RR_WRONGVER_CODE;
         return NGX_OK;
@@ -1935,8 +1918,8 @@ pubcookie_user (ngx_http_request_t * r,
     /* check creds */
     if (rr->creds != cookie_data->broken.creds) {
         pc_req_log(r,
-                   "pubcookie_user: wrong creds; required: %c cookie: %c uri: %s",
-                   rr->creds, cookie_data->broken.creds, get_req_uri(r));
+                   "pubcookie_user: wrong creds; required: %c cookie: %c uri: %V",
+                   rr->creds, cookie_data->broken.creds, &r->uri);
         rr->failed = PBC_BAD_AUTH;
         rr->redir_reason_no = PBC_RR_WRONGCREDS_CODE;
         return NGX_OK;
@@ -2023,8 +2006,8 @@ pubcookie_user (ngx_http_request_t * r,
     }
 
     pc_req_log(r,
-               "pubcookie_user: everything is o'tay; current uri is: %s",
-               get_req_uri(r));
+               "pubcookie_user: everything is o'tay; current uri is: %V",
+               &r->uri);
 
     return NGX_OK;
 }
