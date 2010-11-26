@@ -61,6 +61,11 @@ extern ngx_module_t ngx_pubcookie_module;
 
 #define pubcookie_set_realm(r,realm)   add_out_header(r,"WWW-Authenticate",realm,0)
 
+#define ngx_strcmp_const(ns,cs) ((ns).len == sizeof(cs)-1 && \
+                            ! ngx_strncmp((ns).data, (u_char*)(cs), sizeof(cs)-1))
+#define ngx_strcasecmp_const(ns,cs) ((ns).len == sizeof(cs)-1 && \
+                            ! ngx_strncasecmp((ns).data, (u_char*)(cs), sizeof(cs)-1))
+
 static int ngx_strcat3 (ngx_pool_t *pool, ngx_str_t *res, ngx_str_t *s1, ngx_str_t *s2, ngx_str_t *s3);
 
 static char *encode_get_args (request_rec *r, char *in, int ec);
@@ -97,6 +102,8 @@ static int pubcookie_user_hook (ngx_http_request_t * r);
 /**************************************
  * Apache/APR compatibility
  */
+
+#define ap_pfree(p,v) ngx_pfree(p,v)
 
 #define ap_table_add(tbl,hdr,val) add_out_header(r,hdr,val,1)
 
@@ -158,7 +165,7 @@ ap_psprintf(ngx_pool_t *p, const char *fmt, ...)
     if ((int)(e - s) < m / 2) {
         d = (u_char *) ap_pstrdup(p, (char *) s);
         if (NULL != d) {
-            ngx_pfree(p, s);
+            ap_pfree(p, s);
             s = d;
         }
     }
@@ -335,7 +342,7 @@ ap_count_dirs (u_char *path)
 }
 
 
-#ifdef REDIRECT_IN_HEADER
+#if defined(REDIRECT_IN_HEADER)
 /* c2x takes an unsigned, and expects the caller has guaranteed that
  * 0 <= what < 256... which usually means that you have to cast to
  * unsigned char first, because (unsigned)(char)(x) first goes through
@@ -441,19 +448,6 @@ ap_pstrcat3 (ngx_pool_t *pool, const char *s1, const char *s2, const char *s3)
     if (n3)  ngx_memcpy(p + n1 + n2, s3, n3);
     p[n1+n2+n3] = '\0';
     return (char *) p;
-}
-
-static char *
-nswrap (ngx_pool_t *pool, ngx_str_t *nsp)
-{
-    ngx_str_t q = ngx_string("\"");
-    ngx_str_t res;
-    if (NULL == nsp)
-        return "(NULL)";
-    if (NULL == nsp->data || 0 == nsp->len)
-        return "\"\"";
-    ngx_strcat3(pool, &res, &q, nsp, &q);
-    return (char *) res.data;
 }
 
 /**************************************
@@ -876,9 +870,9 @@ pubcookie_set_super_debug (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
     ngx_str_t *value = cf->args->elts;
 
-    if (0 == ngx_strcasecmp(value[1].data, (u_char *) "on")) {
+    if (ngx_strcasecmp_const(value[1], "on")) {
         pubcookie_super_debug = 1;
-    } else if (0 == ngx_strcasecmp(value[1].data, (u_char *) "off")) {
+    } else if (ngx_strcasecmp_const(value[1], "off")) {
         pubcookie_super_debug = 0;
     } else {
         return "Invalid value in pubcookie_super_debug";
@@ -998,9 +992,9 @@ pubcookie_set_method (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_pubcookie_srv_t *scfg = conf;
     ngx_str_t *value = cf->args->elts;
 
-    if (0 == ngx_strcasecmp(value[1].data, (u_char *) "get")) {
+    if (ngx_strcasecmp_const(value[1], "get")) {
         scfg->use_post = 0;
-    } else if (0 == ngx_strcasecmp(value[1].data, (u_char *) "post")) {
+    } else if (ngx_strcasecmp_const(value[1], "post")) {
         scfg->use_post = 1;
     } else {
         return "Invalid pubcookie login method";
@@ -1015,11 +1009,11 @@ pubcookie_set_crypt (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_pubcookie_srv_t *scfg = conf;
     ngx_str_t *value = cf->args->elts;
 
-    if (0 == ngx_strcasecmp(value[1].data, (u_char *) "des")) {
+    if (ngx_strcasecmp_const(value[1], "des")) {
         scfg->crypt_alg = PBC_CRYPT_DES;
-    } else if (0 == ngx_strcasecmp(value[1].data, (u_char *) "aes")) {
+    } else if (ngx_strcasecmp_const(value[1], "aes")) {
         scfg->crypt_alg = PBC_CRYPT_AES;
-    } else if (0 == ngx_strcasecmp(value[1].data, (u_char *) "aes+domain")) {
+    } else if (ngx_strcasecmp_const(value[1], "aes+domain")) {
         scfg->crypt_alg = PBC_CRYPT_AES_D;
     } else {
         return "Invalid encryption method";
@@ -1097,9 +1091,9 @@ pubcookie_set_noprompt (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_pubcookie_loc_t *cfg = conf;
     ngx_str_t *value = cf->args->elts;
 
-    if (0 == ngx_strcasecmp(value[1].data, (u_char *) "on")) {
+    if (ngx_strcasecmp_const(value[1], "on")) {
         cfg->noprompt = 1;
-    } else if (0 == ngx_strcasecmp(value[1].data, (u_char *) "off")) {
+    } else if (ngx_strcasecmp_const(value[1], "off")) {
         cfg->noprompt = -1;
     } else {
         return "Invalid value in pubcookie_noprompt";
@@ -1556,7 +1550,7 @@ add_out_header (ngx_http_request_t *r, const char *name, const char *value, int 
 
     pc_req_log(r, "out_header[%s]:\"%s\"", name, value);
     if (free_value)
-        ngx_pfree(r->pool, (void *) value);
+        ap_pfree(r->pool, (void *) value);
 
     return NGX_OK;
 }
@@ -1662,7 +1656,7 @@ set_session_cookie (ngx_http_request_t * r,
            session cookies and from session cookie to session cookie */
     }
 
-    ngx_pfree(p, new_cookie);
+    ap_pfree(p, new_cookie);
 }
 
 /*
@@ -1790,7 +1784,7 @@ do_end_session_redirect (ngx_http_request_t * r,
                            PBC_GETVAR_APPSRVID,
                            appsrvid(r));
     ap_rprintf(r, redirect_html, refresh);
-    ngx_pfree(r->pool, refresh);
+    ap_pfree(r->pool, refresh);
 
     return NGX_OK;
 }
@@ -1901,8 +1895,8 @@ get_cookie (ngx_http_request_t * r, char *name, int n)
        pc_req_log(r, " .. blanked \"%V\"", &((**cph).value));
     }
 
-    ngx_pfree(p, name_w_eq);
-    ngx_pfree(p, (char *) cookie_header);
+    ap_pfree(p, name_w_eq);
+    ap_pfree(p, (char *) cookie_header);
 
     if (*cookie) {
         ap_log_rerror (PC_LOG_DEBUG, r, " .. return: %s", cookie);
@@ -2126,7 +2120,6 @@ auth_failed_handler (ngx_http_request_t * r,
     /* setup the client pull */
     refresh = ap_psprintf (p, "%d;URL=%V",
                     PBC_REFRESH_TIME, &scfg->login);
-    pc_req_log(r, "refresh=%s", refresh);
 
     /* the redirect for requests with POST args are  */
     /* different then reqs with only GET args        */
@@ -2147,7 +2140,7 @@ auth_failed_handler (ngx_http_request_t * r,
                           (u_char *) e_g_req_contents,
                           g_req_contents_len);
 
-    ngx_pfree(p, g_req_contents);
+    ap_pfree(p, g_req_contents);
     g_req_contents = NULL;
 
     /* The GET method requires a pre-session cookie */
@@ -2266,16 +2259,16 @@ auth_failed_handler (ngx_http_request_t * r,
     }
 
     pc_req_log (r,
-                   "auth_failed_handler: redirect sent. uri: %s reason: %d",
-                   get_req_uri(mr), rr->redir_reason_no);
+                   "auth_failed_handler: redirect sent. uri: %V reason: %d",
+                   &mr->uri, rr->redir_reason_no);
 
 END:
     if (NULL != refresh)
-        ngx_pfree(p, refresh);
+        ap_pfree(p, refresh);
     if (NULL != g_req_contents)
-        ngx_pfree(p, g_req_contents);
+        ap_pfree(p, g_req_contents);
     if (NULL != e_g_req_contents)
-        ngx_pfree(p, e_g_req_contents);
+        ap_pfree(p, e_g_req_contents);
 
     return (OK);
 }
@@ -2296,16 +2289,18 @@ pubcookie_user_hook (ngx_http_request_t * r)
     char creds;
 
     /* pass if the request is for our post-reply */
-    if (0 == ngx_strcasecmp (r->uri.data, scfg->post_url.data)) {
+    if (r->uri.len == scfg->post_url.len
+            && 0 == ngx_strncmp(r->uri.data, scfg->post_url.data, r->uri.len))
         return NGX_OK;
-    }
 
     /* get pubcookie creds or bail if not a pubcookie auth_type */
     if ((creds = pubcookie_auth_type(r)) == PBC_CREDS_NONE)
         return NGX_DECLINED;
 
     /* pass if the request is for favicon.ico */
-    if (0 == ngx_strncasecmp(r->uri.data, (u_char *) "/favicon.ico", 12))
+    if (r->uri.len == sizeof("/favicon.ico") - 1
+            && 0 == ngx_strncasecmp(r->uri.data, (u_char *) "/favicon.ico",
+                                    sizeof("/favicon.ico")-1))
         return NGX_OK;
 
     rr->creds = creds;
@@ -2318,7 +2313,7 @@ pubcookie_user_hook (ngx_http_request_t * r)
             return DONE;
         } else if (rr->failed == PBC_BAD_USER) {
             pc_req_log(r, " .. user_hook: bad user");
-            rr->msg.data = (u_char *) "Unauthorized user.";
+            ap_rprintf(r, "Unauthorized user.");
             return DONE;
         }
         auth_failed_handler(r, cfg, scfg, rr);
@@ -2352,8 +2347,8 @@ pubcookie_user_hook (ngx_http_request_t * r)
        considering as they have not yet come up. */
 
     if (NULL != r->headers_in.if_modified_since) {
-        pc_req_log(r, " .. user_hook: removing if-modified = %s",
-                    nswrap(r->pool, &r->headers_in.if_modified_since->value));
+        pc_req_log(r, " .. user_hook: removing if-modified = %V",
+                    &r->headers_in.if_modified_since->value);
         r->headers_in.if_modified_since = NULL;
     }
 
@@ -2851,11 +2846,12 @@ ngx_pubcookie_authz_handler(ngx_http_request_t *r)
     if (r != r->main) /* subrequest */
         return NGX_OK;
 
-    if (0 == ngx_strncasecmp(r->uri.data, (u_char *) "/favicon.ico", 12))
+    if (ngx_strcasecmp_const(r->uri, "/favicon.ico"))
         return NGX_OK;
 
     /* pass if it is our post-reply */
-    if (0 == ngx_strcasecmp(r->uri.data, scfg->post_url.data))
+    if (r->uri.len == scfg->post_url.len
+            && 0 == ngx_strncmp(r->uri.data, scfg->post_url.data, r->uri.len))
         return NGX_OK;
 
     pubcookie_setup_request(r);
@@ -3332,13 +3328,11 @@ pubcookie_handle_post_reply (ngx_http_request_t * r)
         ap_rprintf (r, post_reply_2_html);
 
     } else {                    /* do a get */
-        r->keepalive = 0;
-        r->lingering_close = 0;
         ap_table_add(HDRS_OUT, "Location", arg);
         return NGX_HTTP_MOVED_TEMPORARILY;
     }
 
-    ngx_pfree(p, arg);
+    ap_pfree(p, arg);
     return (OK);
 }
 
