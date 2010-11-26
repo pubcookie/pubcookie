@@ -78,17 +78,13 @@ str2charp (ngx_pool_t *pool, ngx_str_t *ns)
 {
     u_char *dst;
     int len;
-    if (NULL == ns)
-        return NULL;
+    if (! ns)  return NULL;
     if ((len = ns->len) < 0) {
-        if (NULL == ns->data)
-            return NULL;
+        if (! ns->data)  return NULL;
         len = ngx_strlen((u_char *) ns->data);
     }
-    if (NULL == (dst = ngx_pnalloc(pool, len + 1)))
-        return NULL;
-    if (len > 0)
-        ngx_memcpy(dst, ns->data, len);
+    if (! (dst = ngx_pnalloc(pool, len + 1)))  return NULL;
+    if (len > 0)  ngx_memcpy(dst, ns->data, len);
     dst[len] = '\0';
     return (char *) dst;
 }
@@ -138,17 +134,18 @@ __ap_pstrdup (ngx_pool_t *pool, const char *src)
 /* Module configuration struct */
 typedef struct {
     uint32_t signature;
-    int inact_exp;
-    int hard_exp;
+    ngx_int_t inact_exp;
+    ngx_int_t hard_exp;
     int non_ssl_ok;
     ngx_str_t oldappid; /* Added by ddj@cmu.edu on 2006/05/10 */
     ngx_str_t appid;
     ngx_str_t end_session;
     int session_reauth;
     ngx_str_t addl_requests;
-    int strip_realm;
+    ngx_flag_t strip_realm;
     ngx_str_t accept_realms;
-    int noprompt;
+    ngx_flag_t noprompt;
+    ngx_array_t *keydirs;
 } ngx_pubcookie_loc_t;
 
 typedef struct
@@ -171,13 +168,14 @@ typedef struct
     /* === server part === */
     ngx_str_t post_url;
     ngx_str_t appsrvid;
-    int dirdepth;
-    int noblank;
-    int catenate;		/* Added by ddj@cmu.edu on 2006/05/01 */
-    int no_clean_creds;
-    int use_post;
-    unsigned crypt_alg;
-    int behind_proxy;
+    ngx_int_t dirdepth;
+    ngx_flag_t noblank;
+    ngx_flag_t catenate;		/* Added by ddj@cmu.edu on 2006/05/01 */
+    ngx_flag_t no_clean_creds;
+    ngx_int_t use_post;
+    ngx_uint_t crypt_alg;
+    ngx_flag_t behind_proxy;
+    ngx_flag_t dummy_super_debug;
 } ngx_pubcookie_srv_t;
 
 typedef struct

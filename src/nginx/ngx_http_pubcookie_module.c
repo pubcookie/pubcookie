@@ -34,24 +34,6 @@ static ngx_str_t pbc_content_type = ngx_string("text/html; charset=utf-8");
 
 static ngx_str_t blank_str = ngx_string("");
 
-static struct {
-    const char *name;
-    size_t offset;
-} pbc_cfg_str_fields[] = {
-    { "enterprise_domain",  offsetof(ngx_pubcookie_srv_t, enterprise_domain) },
-    { "ssl_key_file",       offsetof(ngx_pubcookie_srv_t, ssl_key_file) },
-    { "ssl_cert_file",      offsetof(ngx_pubcookie_srv_t, ssl_cert_file) },
-    { "granting_key_file",  offsetof(ngx_pubcookie_srv_t, granting_key_file) },
-    { "granting_cert_file", offsetof(ngx_pubcookie_srv_t, granting_cert_file) },
-    { "crypt_key",          offsetof(ngx_pubcookie_srv_t, crypt_key) },
-    { "login_uri",          offsetof(ngx_pubcookie_srv_t, login) },
-    { "keydir",             offsetof(ngx_pubcookie_srv_t, keydir) },
-    { "appsrvid",           offsetof(ngx_pubcookie_srv_t, appsrvid) },
-    { "egd_socket",         offsetof(ngx_pubcookie_srv_t, egd_socket) },
-    { "post_url",           offsetof(ngx_pubcookie_srv_t, post_url) },
-    { NULL, 0 }
-};
-
 extern ngx_module_t ngx_pubcookie_module;
 
 
@@ -76,23 +58,15 @@ static char *ngx_pubcookie_merge_srv_conf (ngx_conf_t *cf, void *parent, void *c
 
 static ngx_int_t ngx_pubcookie_init (ngx_conf_t *cf);
 
-static char *pubcookie_set_inact_exp (ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
-static char *pubcookie_set_hard_exp (ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
-static char *pubcookie_set_login (ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
-static char *pubcookie_set_domain (ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
-static char *pubcookie_set_method (ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
-static char *pubcookie_set_crypt (ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
-static char *pubcookie_set_appid (ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
-static char *pubcookie_set_appsrvid (ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
-static char *pubcookie_set_noprompt (ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
-static char *pubcookie_set_super_debug (ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
-static char *pubcookie_set_post_url (ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
-
 static char pubcookie_auth_type (ngx_http_request_t * r);
 
 static int pubcookie_user (ngx_http_request_t * r, ngx_pubcookie_loc_t *cfg, ngx_pubcookie_srv_t *scfg, ngx_pubcookie_req_t *rr);
 static int pubcookie_user_hook (ngx_http_request_t * r);
 
+static void dump_recs(ngx_http_request_t *r, ngx_pubcookie_loc_t *c, ngx_pubcookie_srv_t *s);
+static void dump_cookie_data(ngx_http_request_t *r, const char *prefix, pbc_cookie_data *cookie_data);
+
+const char * libpbc_config_getstring(pool *ptr, const char *name, const char *defval);
 
 /**************************************
  * Apache/APR compatibility
@@ -431,8 +405,14 @@ ngx_strcat3 (ngx_pool_t *pool, ngx_str_t *res, ngx_str_t *s1, ngx_str_t *s2, ngx
     if (n2)  ngx_memcpy(p + n1, s2->data, n2);
     if (n3)  ngx_memcpy(p + n1 + n2, s3->data, n3);
     p[n1+n2+n3] = '\0';
+    if (res == s1)
+        ngx_pfree(pool, s1->data);
+    else if (res == s2)
+        ngx_pfree(pool, s2->data);
+    else if (res == s3)
+        ngx_pfree(pool, s3->data);
     res->data = p;
-    res->len = n;
+    res->len = n - 1;
     return NGX_OK;
 }
 
@@ -516,836 +496,6 @@ pubcookie_finish_request (ngx_http_request_t *r)
 
     return ngx_http_output_filter(r, &out);
 }
-
-
-/**************************************
- * Configuration
- */
-
-static ngx_command_t  ngx_pubcookie_commands[] = {
-    /* "Set the inactivity expire time for PubCookies." */
-    { ngx_string("pubcookie_inactive_expire"),
-      NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
-      pubcookie_set_inact_exp,
-      NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_pubcookie_loc_t, inact_exp),
-      NULL },
-
-    /* "Set the hard expire time for PubCookies." */
-    { ngx_string("pubcookie_hard_expire"),
-      NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
-      pubcookie_set_hard_exp,
-      NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_pubcookie_loc_t, hard_exp),
-      NULL },
-
-    /* "Set super debugging." */
-    { ngx_string("pubcookie_super_debug"),
-      NGX_HTTP_MAIN_CONF|NGX_CONF_FLAG,
-      pubcookie_set_super_debug,
-      0,
-      0,
-      NULL },
-
-    /* "Set the login page for PubCookies." */
-    { ngx_string("pubcookie_login"),
-      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
-      pubcookie_set_login,
-      NGX_HTTP_SRV_CONF_OFFSET,
-      offsetof(ngx_pubcookie_srv_t, login),
-      NULL },
-
-    /* "Set the domain for PubCookies." */
-    { ngx_string("pubcookie_domain"),
-      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
-      pubcookie_set_domain,
-      NGX_HTTP_SRV_CONF_OFFSET,
-      offsetof(ngx_pubcookie_srv_t, enterprise_domain),
-      NULL },
-
-    /* "Set the location of PubCookie encryption keys." */
-    { ngx_string("pubcookie_key_dir"),
-      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
-      ngx_conf_set_str_slot,
-      NGX_HTTP_SRV_CONF_OFFSET,
-      offsetof(ngx_pubcookie_srv_t, keydir),
-      NULL },
-
-    /* "Set the name of the certfile for Granting PubCookies." */
-    { ngx_string("pubcookie_granting_cert_file"),
-      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
-      ngx_conf_set_str_slot,
-      NGX_HTTP_SRV_CONF_OFFSET,
-      offsetof(ngx_pubcookie_srv_t, granting_cert_file),
-      NULL },
-
-    /* "Set the name of the keyfile for Granting PubCookies." */
-    { ngx_string("pubcookie_granting_key_file"),
-      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
-      ngx_conf_set_str_slot,
-      NGX_HTTP_SRV_CONF_OFFSET,
-      offsetof(ngx_pubcookie_srv_t, granting_key_file),
-      NULL },
-
-    /* "Set the name of the keyfile for Session PubCookies." */
-    { ngx_string("pubcookie_session_key_file"),
-      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
-      ngx_conf_set_str_slot,
-      NGX_HTTP_SRV_CONF_OFFSET,
-      offsetof(ngx_pubcookie_srv_t, ssl_key_file),
-      NULL },
-
-    /* "Set the name of the certfile for Session PubCookies." */
-    { ngx_string("pubcookie_session_cert_file"),
-      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
-      ngx_conf_set_str_slot,
-      NGX_HTTP_SRV_CONF_OFFSET,
-      offsetof(ngx_pubcookie_srv_t, ssl_cert_file),
-      NULL },
-
-    /* "Set the name of the encryption keyfile for PubCookies." */
-    { ngx_string("pubcookie_crypt_key_file"),
-      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
-      ngx_conf_set_str_slot,
-      NGX_HTTP_SRV_CONF_OFFSET,
-      offsetof(ngx_pubcookie_srv_t, crypt_key),
-      NULL },
-
-    /* "Set the name of the EGD Socket if needed for randomness." */
-    { ngx_string("pubcookie_egd_device"),
-      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
-      ngx_conf_set_str_slot,
-      NGX_HTTP_SRV_CONF_OFFSET,
-      offsetof(ngx_pubcookie_srv_t, egd_socket),
-      NULL },
-
-    /* "Set post response URL. Def = /PubCookie.reply" */
-    { ngx_string("pubcookie_post"),
-      NGX_HTTP_LOC_CONF|NGX_CONF_NOARGS,
-      pubcookie_set_post_url,
-      NGX_HTTP_SRV_CONF_OFFSET,
-      offsetof(ngx_pubcookie_srv_t, post_url),
-      NULL },
-
-    /* "Set login method (GET/POST). Def = GET" */
-    { ngx_string("pubcookie_login_method"),
-      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
-      pubcookie_set_method,
-      NGX_HTTP_SRV_CONF_OFFSET,
-      offsetof(ngx_pubcookie_srv_t, use_post),
-      NULL },
-
-    /* "Set encryption method (AES/DES)." */
-    { ngx_string("pubcookie_encryption"),
-      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
-      pubcookie_set_crypt,
-      NGX_HTTP_SRV_CONF_OFFSET,
-      offsetof(ngx_pubcookie_srv_t, crypt_alg),
-      NULL },
-
-    /* "Set the name of the application." */
-    { ngx_string("pubcookie_app_id"),
-      NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
-      pubcookie_set_appid,
-      NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_pubcookie_loc_t, appid),
-      NULL },
-
-    /* "Set the name of the server(cluster)." */
-    { ngx_string("pubcookie_app_srv_id"),
-      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
-      pubcookie_set_appsrvid,
-      NGX_HTTP_SRV_CONF_OFFSET,
-      offsetof(ngx_pubcookie_srv_t, appsrvid),
-      NULL },
-
-    /* "Do not prompt for id and password if not already logged in." */
-    { ngx_string("pubcookie_no_prompt"),
-      NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
-      pubcookie_set_noprompt,
-      NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_pubcookie_loc_t, noprompt),
-      NULL },
-
-    /* "End application session and possibly login session" */
-    { ngx_string("pubcookie_end_session"),
-      NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
-      ngx_conf_set_str_slot,
-      NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_pubcookie_loc_t, end_session),
-      NULL },
-
-#if 0
-    /* "Do not blank cookies.". DEPRECATED in favour of pubcookie_no_obscure_cookies */
-    { ngx_string("pubcookie_no_blank"),
-      NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
-      pubcookie_set_no_blank,
-      NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_pubcookie_loc_t, noblank),
-      NULL },
-
-    /* "Do not obscure Pubcookie cookies." */
-    { ngx_string("pubcookie_no_obscure_cookies"),
-      NGX_HTTP_MAIN_CONF|NGX_CONF_FLAG,
-      pubcookie_set_no_obscure,
-      NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_pubcookie_loc_t, noblank),
-      NULL },
-
-    /* Added by ddj@cmu.edu on 2006/05/01 to address security issue at CMU. */
-    /* "Determines whether a new AppID replaces or is catenated to the old App ID." */
-    { ngx_string("pubcookie_catenate_app_ids"),
-      NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
-      pubcookie_set_catenate_appids,
-      NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_pubcookie_loc_t, catenate),
-      NULL },
-    /* End of ddj@cmu.edu's change. */
-
-    /* "Specify the Directory Depth for generating default AppIDs." */
-    { ngx_string("pubcookie_dir_depth_for_app_id"),
-      NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
-      pubcookie_set_dirdepth,
-      NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_pubcookie_loc_t, dirdepth),
-      NULL },
-
-    /* "Force reauthentication for new sessions with specified timeout" */
-    { ngx_string("pubcookie_session_cause_reauth"),
-      NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
-      set_session_reauth,
-      NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_pubcookie_loc_t, session_reauth),
-      NULL },
-
-    /* "Send the following options to the login server along with authentication requests" */
-    { ngx_string("pubcookie_add_request"),
-      NGX_HTTP_LOC_CONF|NGX_CONF_1MORE/*AP_INIT_ITERATE*/,
-      pubcookie_add_request_iterate,
-      NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_pubcookie_loc_t, addl_requests),
-      NULL },
-
-    /* "Only accept realms in this list" */
-    { ngx_string("pubcookie_accept_realm"),
-      NGX_HTTP_LOC_CONF|NGX_CONF_1MORE/*AP_INIT_ITERATE*/,
-      pubcookie_accept_realms_iterate,
-      NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_pubcookie_loc_t, accept_realms),
-      NULL },
-
-    /* "Strip the realm (and set the REMOTE_REALM envirorment variable)" */
-    { ngx_string("pubcookie_strip_realm"),
-      NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
-      pubcookie_strip_realm,
-      NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_pubcookie_loc_t, strip_realm),
-      NULL },
-
-    /* "Specify on-demand pubcookie directives." */
-    { ngx_string("pubcookie_on_demand"),
-      NGX_HTTP_LOC_CONF|NGX_CONF_2MORE/*AP_INIT_ITERATE2*/,
-      pubcookie_set_keyed_directive_iterate2,
-      NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_pubcookie_loc_t, dummy),
-      NULL },
-
-    /* "Set to leave credentials in place after cleanup" */
-    { ngx_string("pubcookie_no_clean_creds"),
-      NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
-      pubcookie_set_no_clean_creds,
-      NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_pubcookie_loc_t, no_clean_creds),
-      NULL },
-
-    /* "Set to ignore non-standard server port" */
-    { ngx_string("pubcookie_behind_proxy"),
-      NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
-      pubcookie_set_behind_proxy,
-      NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_pubcookie_loc_t, behind_proxy),
-      NULL },
-#endif
-
-    ngx_null_command
-};
-
-static ngx_http_module_t  ngx_pubcookie_module_ctx = {
-    NULL,                             /* preconfiguration */
-    ngx_pubcookie_init,               /* postconfiguration */
-
-    NULL,                             /* create main configuration */
-    NULL,                             /* init main configuration */
-
-    ngx_pubcookie_create_srv_conf,    /* create server configuration */
-    ngx_pubcookie_merge_srv_conf,     /* merge server configuration */
-
-    ngx_pubcookie_create_loc_conf,    /* create location configuration */
-    ngx_pubcookie_merge_loc_conf      /* merge location configuration */
-};
-
-ngx_module_t ngx_pubcookie_module = {
-    NGX_MODULE_V1,
-    &ngx_pubcookie_module_ctx,             /* module context */
-    ngx_pubcookie_commands,                /* module directives */
-    NGX_HTTP_MODULE,                       /* module type */
-    NULL,                                  /* init master */
-    NULL,                                  /* init module */
-    NULL,                                  /* init process */
-    NULL,                                  /* init thread */
-    NULL,                                  /* exit thread */
-    NULL,                                  /* exit process */
-    NULL,                                  /* exit master */
-    NGX_MODULE_V1_PADDING
-};
-
-
-/*
- * Debugging
- */
-static void
-dump_recs(ngx_http_request_t *r, ngx_pubcookie_loc_t *c, ngx_pubcookie_srv_t *s)
-{
-#if defined(DEBUG_DUMP_RECS)
-    ngx_pool_t *p = r->pool;
-    pc_req_log(r, "+--- dump_loc_req ---");
-    pc_req_log(r, "| login=%V domain=%V",
-            &s->login, &s->enterprise_domain);
-    pc_req_log(r, "| keydir=%V grant_cf=%V ssl_keyf=%V ssl_cf=%V",
-            &s->keydir, &s->granting_cert_file, &s->ssl_key_file, &s->ssl_cert_file);
-    pc_req_log(r, "| crypt_key=%V egd_socket=%V",
-            &s->crypt_key, &s->egd_socket);
-    pc_req_log(r, "| dirdepth=%d noblank=%d catenate=%d no_clean_creds=%d use_post=%d behind_proxy=%d",
-            s->dirdepth, s->noblank, s->catenate, s->no_clean_creds, s->use_post, s->behind_proxy);
-    pc_req_log(r, "| oldappid=%V appid=%V appsrvid=%V",
-            &c->oldappid, &c->appid, &s->appsrvid);
-    pc_req_log(r, "| post_url=%V end_session=%V addl_requests=%V accept_realms=%V",
-            &s->post_url, &c->end_session, &c->addl_requests, &c->accept_realms);
-    pc_req_log(r, "| crypt_alg=%d inact_exp=%d hard_exp=%d non_ssl_ok=%d session_reauth=%d",
-            s->crypt_alg, c->inact_exp, c->hard_exp, c->non_ssl_ok, c->session_reauth);
-    pc_req_log(r, "| strip_realm=%d noprompt=%d",
-            c->strip_realm, c->noprompt);
-    pc_req_log(r, "+----------------------------------");
-#endif /* DEBUG_DUMP_RECS */
-}
-
-static void
-dump_cookie_data(ngx_http_request_t *r, const char *prefix, pbc_cookie_data *cookie_data)
-{
-#if defined(DEBUG_DUMP_RECS)
-    cookie_data_struct *d = &cookie_data->broken;
-    pc_req_log(r, "cookie_data(%s): user=\"%s\" version=\"%s\" appsrvid=\"%s\" appid=\"%s\"",
-            prefix, d->user, d->version, d->appsrvid, d->appid);
-#endif /* DEBUG_DUMP_RECS */
-}
-
-
-/*
- * Configuration helper for libpbc library
- */
-const char *
-libpbc_config_getstring(pool *ptr, const char *name, const char *defval)
-{
-    ngx_pubcookie_srv_t *scfg = NULL;
-    int i;
-
-    if (NULL != ptr) {
-        if (*(uint32_t *)ptr == PBC_SRV_SIGNATURE)
-            scfg = (ngx_pubcookie_srv_t *) ptr;
-        else
-            scfg = ngx_http_get_module_srv_conf(((ngx_http_request_t *)ptr), ngx_pubcookie_module);
-    }
-
-    if (NULL == scfg) {
-        pc_log_log(log_of(ptr), "PUBCOOKIE: server configuration not found for \"%s\"", name);
-        return defval;
-    }
-
-    for (i = 0; pbc_cfg_str_fields[i].name != NULL; i++) {
-        if (0 == strcmp(pbc_cfg_str_fields[i].name, name)) {
-            ngx_str_t *nsp = (ngx_str_t *) ((char *)scfg + pbc_cfg_str_fields[i].offset);
-            char * val = nsp->data ? str2charp(pool_of(ptr), nsp) : (char *) defval;
-            pc_log_log(log_of(ptr), "PUBCOOKIE: value of \"%s\" is \"%s\"",
-                        name, val?:"(NULL)");
-            return val;
-        }
-    }
-
-    /* not found */
-    pc_log_log(log_of(ptr), "PUBCOOKIE: field \"%s\" not found !!", name);
-    return defval;
-}
-
-/**
- * used to give more debugging
- * @param cmd - command record
- * @param mconfig - module configuration
- * @param f - int
- * @returns NULL 
- */
-static char *
-pubcookie_set_super_debug (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
-{
-    ngx_str_t *value = cf->args->elts;
-
-    if (ngx_strcasecmp_c(value[1], "on")) {
-        pubcookie_super_debug = 1;
-    } else if (ngx_strcasecmp_c(value[1], "off")) {
-        pubcookie_super_debug = 0;
-    } else {
-        return "Invalid value in pubcookie_super_debug";
-    }
-
-    return NGX_CONF_OK;
-}
-
-static char *
-pubcookie_set_inact_exp (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
-{
-    ngx_pubcookie_loc_t *cfg = conf;
-    ngx_str_t *value = cf->args->elts;
-
-    if ((cfg->inact_exp = ngx_atoi (value[1].data, value[1].len)) == NGX_ERROR) {
-        return "PUBCOOKIE: Could not convert inactivity expire parameter to nonnegative number.";
-    }
-
-    /* how to turn off inactivity checking */
-    if (cfg->inact_exp == -1) {
-        return NGX_CONF_OK;
-    }
-
-    /* check for valid range */
-    if (cfg->inact_exp < PBC_MIN_INACT_EXPIRE) {
-        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-            "PUBCOOKIE: inactivity expire parameter less then allowed minimum of %d, requested %d.",
-            PBC_MIN_INACT_EXPIRE, cfg->inact_exp);
-        return NGX_CONF_ERROR;
-    }
-
-    return NGX_CONF_OK;
-}
-
-static char *
-pubcookie_set_hard_exp (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
-{
-    ngx_pubcookie_loc_t *cfg = conf;
-    ngx_str_t *value = cf->args->elts;
-
-    if ((cfg->hard_exp = ngx_atoi(value[1].data, value[1].len)) == NGX_ERROR) {
-        return "PUBCOOKIE: PubcookieHardExpire should be nonnegative integer.";
-    } else if (cfg->hard_exp > PBC_MAX_HARD_EXPIRE) {
-        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-            "PUBCOOKIE: Hard expire parameter greater then allowed maximium of %d, requested %d.",
-            PBC_MAX_HARD_EXPIRE, cfg->hard_exp);
-        return NGX_CONF_ERROR;
-    } else if (cfg->hard_exp < PBC_MIN_HARD_EXPIRE) {
-        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-            "PUBCOOKIE: Hard expire parameter less then allowed minimum of %d, requested %d.",
-            PBC_MIN_HARD_EXPIRE, cfg->hard_exp);
-        return NGX_CONF_ERROR;
-    }
-
-    return NGX_CONF_OK;
-}
-
-static char *
-pubcookie_set_login (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
-{
-    return ngx_conf_set_str_slot(cf, cmd, conf);
-#if 0
-    ngx_pubcookie_srv_t *scfg = conf;
-    ngx_str_t *value = cf->args->elts;
-
-    ngx_str_t schema = ngx_string("https://");
-    ngx_str_t path = ngx_string("/");
-    ngx_str_t host;
-    u_char *p;
-
-    if (ngx_strncmp(value[1].data, "http://", 7) && ngx_strncmp(value[1].data, "https://", 8)) {
-        return "PUBCOOKIE: PubCookieLogin must start with http:// or https://";
-    }
-
-    host.data = value[1].data + 7;
-    host.len = value[1].len - 7;
-    if (value[1].data[4] == 's') {
-        host.data++;
-        host.len--;
-    }
-
-    p = ngx_strnstr(host.data, "/", host.len);
-    if (NULL == p) {
-        p = ngx_strnstr(host.data, "?", host.len);
-    }
-    if (NULL != p) {
-        path.data = p;
-        path.len = host.len - (int)(p - host.data);
-        host.len = (int)(p - host.data);
-    }
-
-    ngx_strcat3(cf->pool, &scfg->login, &schema, &host, &path);
-
-    return NGX_CONF_OK;
-#endif
-}
-
-/**
- *  handle the PubCookieDomain directive
- */
-static char *
-pubcookie_set_domain (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
-{
-    ngx_pubcookie_srv_t *scfg = conf;
-    ngx_str_t *value = cf->args->elts;
-
-    if (value[1].data[0] == '.') {
-        scfg->enterprise_domain = value[1];
-    } else {
-        static ngx_str_t the_dot = ngx_string(".");
-        ngx_strcat3(cf->pool, &scfg->enterprise_domain, &the_dot, &value[1], NULL);
-    }
-
-    return NGX_CONF_OK;
-}
-
-static char *
-pubcookie_set_method (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
-{
-    ngx_pubcookie_srv_t *scfg = conf;
-    ngx_str_t *value = cf->args->elts;
-
-    if (ngx_strcasecmp_c(value[1], "get")) {
-        scfg->use_post = 0;
-    } else if (ngx_strcasecmp_c(value[1], "post")) {
-        scfg->use_post = 1;
-    } else {
-        return "Invalid pubcookie login method";
-    }
-
-    return NGX_OK;
-}
-
-static char *
-pubcookie_set_crypt (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
-{
-    ngx_pubcookie_srv_t *scfg = conf;
-    ngx_str_t *value = cf->args->elts;
-
-    if (ngx_strcasecmp_c(value[1], "des")) {
-        scfg->crypt_alg = PBC_CRYPT_DES;
-    } else if (ngx_strcasecmp_c(value[1], "aes")) {
-        scfg->crypt_alg = PBC_CRYPT_AES;
-    } else if (ngx_strcasecmp_c(value[1], "aes+domain")) {
-        scfg->crypt_alg = PBC_CRYPT_AES_D;
-    } else {
-        return "Invalid encryption method";
-    }
-
-    return NGX_CONF_OK;
-}
-
-static char *
-pubcookie_set_appid (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
-{
-    ngx_pubcookie_loc_t *cfg = conf;
-    ngx_pubcookie_srv_t *scfg;
-    ngx_str_t *value = cf->args->elts;
-    u_char *c;
-    u_int i;
-
-    cfg->appid.data = ngx_pnalloc (cf->pool, value[1].len * 3 + 1);
-    c = cfg->appid.data;
-    for (i = 0; i < value[1].len; ++i) {
-        switch (value[1].data[i]) {
-        case ' ': *c++ = '+'; break;
-        case '%': SET_C_LETTER(c,'2','5'); break;
-        case '&': SET_C_LETTER(c,'2','6'); break;
-        case '+': SET_C_LETTER(c,'2','B'); break;
-        case ':': SET_C_LETTER(c,'3','A'); break;
-        case ';': SET_C_LETTER(c,'3','B'); break;
-        case '=': SET_C_LETTER(c,'3','D'); break;
-        case '?': SET_C_LETTER(c,'3','F'); break;
-        default:  *c++ = value[1].data[i]; break;
-        }
-    }
-    *c = '\0';
-    cfg->appid.len = (int)(c - cfg->appid.data);
-
-    /* mark server as pubcookie-enabled */
-    scfg = ngx_http_conf_get_module_srv_conf(cf, ngx_pubcookie_module);
-    scfg->locations++;
-
-    return NGX_CONF_OK;
-}
-
-static char *
-pubcookie_set_appsrvid (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
-{
-    ngx_pubcookie_srv_t *scfg = conf;
-    ngx_str_t *value = cf->args->elts;
-    u_char *c;
-    u_int i;
-
-    scfg->appsrvid.data = ngx_pnalloc (cf->pool, value[1].len * 3 + 1);
-    c = scfg->appsrvid.data;
-    for (i = 0; i < value[1].len; ++i) {
-        switch (value[1].data[i]) {
-        case ' ': *c++ = '+'; break;
-        case '%': SET_C_LETTER(c,'2','5'); break;
-        case '&': SET_C_LETTER(c,'2','6'); break;
-        case '+': SET_C_LETTER(c,'2','B'); break;
-        case ':': SET_C_LETTER(c,'3','A'); break;
-        case ';': SET_C_LETTER(c,'3','B'); break;
-        case '=': SET_C_LETTER(c,'3','D'); break;
-        case '?': SET_C_LETTER(c,'3','F'); break;
-        default:  *c++ = value[1].data[i]; break;
-        }
-    }
-    *c = '\0';
-    scfg->appsrvid.len = (int)(c - scfg->appsrvid.data);
-
-    return NGX_CONF_OK;
-}
-
-static char *
-pubcookie_set_noprompt (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
-{
-    ngx_pubcookie_loc_t *cfg = conf;
-    ngx_str_t *value = cf->args->elts;
-
-    if (ngx_strcasecmp_c(value[1], "on")) {
-        cfg->noprompt = 1;
-    } else if (ngx_strcasecmp_c(value[1], "off")) {
-        cfg->noprompt = -1;
-    } else {
-        return "Invalid value in pubcookie_noprompt";
-    }
-
-    return NGX_CONF_OK;
-}
-
-static char *
-pubcookie_set_post_url (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
-{
-    ngx_pubcookie_srv_t *scfg = conf;
-    ngx_http_core_loc_conf_t  *core_lcf;
-
-    core_lcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
-    scfg->post_url = core_lcf->name;
-    core_lcf->handler = pubcookie_post_handler;
-    pc_cf_log(cf, "post URL is %V", &core_lcf->name);
-
-    return NGX_CONF_OK;
-}
-
-static void *
-ngx_pubcookie_create_loc_conf(ngx_conf_t *cf)
-{
-    ngx_pubcookie_loc_t *cfg;
-
-    cfg = ngx_pcalloc(cf->pool, sizeof(ngx_pubcookie_loc_t));
-    if (NULL == cfg) {
-        return NULL;
-    }
-    cfg->signature = PBC_LOC_SIGNATURE;
-
-    cfg->inact_exp = NGX_CONF_UNSET;
-    cfg->hard_exp = NGX_CONF_UNSET;
-    cfg->non_ssl_ok = NGX_CONF_UNSET;
-    cfg->session_reauth = NGX_CONF_UNSET;
-    cfg->strip_realm = NGX_CONF_UNSET;
-    cfg->noprompt = NGX_CONF_UNSET;
-
-    return cfg;
-}
-
-static char *
-ngx_pubcookie_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
-{
-    ngx_pubcookie_loc_t  *prv = parent;
-    ngx_pubcookie_loc_t  *cfg = child;
-
-    ngx_conf_merge_value(cfg->inact_exp, prv->inact_exp, PBC_DEFAULT_INACT_EXPIRE);
-    ngx_conf_merge_value(cfg->hard_exp, prv->hard_exp, PBC_DEFAULT_HARD_EXPIRE);
-    ngx_conf_merge_value(cfg->non_ssl_ok, prv->non_ssl_ok, 0);
-    ngx_conf_merge_value(cfg->session_reauth, prv->session_reauth, 0);
-    ngx_conf_merge_value(cfg->strip_realm, prv->strip_realm, 0);
-    ngx_conf_merge_value(cfg->noprompt, prv->noprompt, 0);
-
-    /***
-     * Okay.  We might need to catenate app IDs.  We'll know at
-     * request time.  So, let's make sure the "appid" is set assuming
-     * we *won't* have to, and into "oldappid" goes the stuff we'll
-     * need to include if we *do* have to.  Then we will have all the
-     * data we need to go either way at request time.
-     *
-     * ddj@cmu.edu 2006/05/10
-     */
-
-    /* Did the parent have an app ID? */
-    if (NULL != prv->appid.data) {
-        /* Yes.  Did the parent also have an *old* app ID? */
-        if (NULL != prv->oldappid.data) {
-	        /* Yes.  Glue them together and store as "old app ID". */
-	        ngx_strcat3(cf->pool, &cfg->oldappid, &prv->oldappid, &prv->appid, NULL);
-        } else {
-            /* No.  The parent's app ID is now the "old app ID". */
-            cfg->oldappid = prv->appid;
-        }
-    }
-
-    /* life is much easier if the default value is zero or NULL */
-    if (NULL == cfg->appid.data) {
-        cfg->appid = prv->appid;
-    }
-
-    if (NULL == cfg->end_session.data) {
-        cfg->end_session = prv->end_session;
-    }
-
-    if (NULL != prv->addl_requests.data) {
-        if (NULL != cfg->addl_requests.data) {
-	        ngx_strcat3(cf->pool, &cfg->addl_requests, &prv->addl_requests, &cfg->addl_requests, NULL);
-        } else {
-            cfg->addl_requests = prv->addl_requests;
-        }
-    }
-
-    return NGX_CONF_OK;
-}
-
-static void *
-ngx_pubcookie_create_srv_conf(ngx_conf_t *cf)
-{
-    ngx_pubcookie_srv_t  *scfg;
-
-    scfg = ngx_pcalloc(cf->pool, sizeof(ngx_pubcookie_srv_t));
-    if (NULL == scfg)
-        return NULL;
-
-    scfg->signature = PBC_SRV_SIGNATURE;
-    scfg->log = cf->log;
-    scfg->pool = cf->pool;
-
-    scfg->dirdepth = NGX_CONF_UNSET;
-    scfg->noblank = NGX_CONF_UNSET;
-    scfg->catenate = NGX_CONF_UNSET;
-    scfg->no_clean_creds = NGX_CONF_UNSET;
-    scfg->use_post = NGX_CONF_UNSET;
-    scfg->behind_proxy = NGX_CONF_UNSET;
-
-    scfg->crypt_alg = NGX_CONF_UNSET_UINT;
-
-    return scfg;
-}
-
-
-static char *
-ngx_pubcookie_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child)
-{
-    ngx_pubcookie_srv_t *sprv = parent;
-    ngx_pubcookie_srv_t *scfg = child;
-    int i;
-
-    ngx_conf_merge_value(scfg->dirdepth, sprv->dirdepth, PBC_DEFAULT_DIRDEPTH);
-    ngx_conf_merge_value(scfg->noblank, sprv->noblank, 0);
-    ngx_conf_merge_value(scfg->catenate, sprv->catenate, 0);
-    ngx_conf_merge_value(scfg->no_clean_creds, sprv->no_clean_creds, 0);
-    ngx_conf_merge_value(scfg->use_post, sprv->use_post, 0);
-    ngx_conf_merge_uint_value(scfg->crypt_alg, sprv->crypt_alg, PBC_DEF_CRYPT);
-    ngx_conf_merge_value(scfg->behind_proxy, sprv->behind_proxy, 0);
-
-    for (i = 0; pbc_cfg_str_fields[i].name != NULL; i++) {
-        int off = pbc_cfg_str_fields[i].offset;
-        ngx_str_t *ps = (ngx_str_t *)((char *) sprv + off);
-        ngx_str_t *cs = (ngx_str_t *)((char *) scfg + off);
-        if (NULL == cs->data)
-            *cs = *ps;
-    }
-
-    if (0 == scfg->locations)
-        return NGX_CONF_OK;
-
-    if (scfg->use_post && NULL == scfg->post_url.data) {
-        return "pubcookie_post: post reply location e.g. /PubCookie.reply must be set!";
-    }
-
-    if (NULL == scfg->ssl_key_file.data) {
-        return "pubcookie_session_key_file: configuration directive must be set!";
-    }
-    if (NULL == scfg->ssl_cert_file.data) {
-        return "pubcookie_session_cert_file: configuration directive must be set!";
-    }
-    if (NULL == scfg->granting_cert_file.data) {
-        return "pubcookie_granting_cert_file: configuration directive must be set!";
-    }
-    if (NULL == scfg->keydir.data) {
-        return "pubcookie_key_dir: configuration directive must be set!";
-    }
-    if (NULL == scfg->login.data) {
-        return "pubcookie_login: configuration directive must be set!";
-    }
-
-    pc_cf_log(cf, "pubcookie_init: libpbc");
-    if (libpbc_pubcookie_init((pool *) scfg, &scfg->sectext) != PBC_OK) {
-        return "pubcookie_init: libpbc_pubcookie_init failed.";
-    }
-    pc_cf_log(cf, "pubcookie_init: libpbc init done");
-
-    return NGX_CONF_OK;
-}
-
-#if 0
-static char *
-create_location (ngx_conf_t *cf, const char *loc_name)
-{
-    void *core_srv_conf;
-    ngx_command_t *cmd;
-    ngx_str_t arg_cmd = ngx_string("location");
-    ngx_str_t str_loc;
-    ngx_str_t str_prefix = ngx_string("=/");
-    ngx_str_t arg_loc;
-    ngx_conf_t my_cf;
-    ngx_array_t my_args;
-    ngx_str_t *value;
-    ngx_conf_file_t my_conf_file;
-    ngx_buf_t my_buf;
-    char *result;
-
-    core_srv_conf = ngx_http_conf_get_module_srv_conf(cf, ngx_http_core_module);
-    for (cmd = ngx_http_core_module.commands; cmd->name.data; cmd++) {
-        if (ngx_strcmp_c(cmd->name, "location"))
-            break;
-    }
-    if (NULL == cmd->name.data || NULL == core_srv_conf) {
-        return "Cannot find command";
-    }
-
-    /* simulate a null file */
-    my_cf = *cf;
-    my_buf = *cf->conf_file->buffer;
-    my_conf_file = *cf->conf_file;
-    my_buf.pos = my_buf.last = 0;
-    my_conf_file.buffer = &my_buf;
-    my_conf_file.file.offset = 0;
-    my_conf_file.file.info.st_size = 0;
-    my_conf_file.file.fd = NGX_INVALID_FILE;
-    my_cf.conf_file = &my_conf_file;
-
-    /* create arguments: "location" "=/LOCNAME" */
-    str_loc.data = (u_char *) loc_name;
-    str_loc.len = strlen(loc_name);
-    ngx_strcat3(cf->pool, &arg_loc, &str_prefix, &str_loc, NULL);
-    ngx_array_init(&my_args, cf->pool, 2, sizeof(ngx_str_t));
-    my_cf.args = &my_args;
-    value = my_args.elts;
-    my_args.nelts = 2;
-    value[0] = arg_cmd;
-    value[1] = arg_loc;
-
-    result = (*cmd->set)(&my_cf, cmd, core_srv_conf);
-    return result;
-}
-#endif
 
 /**************************************
  *  Cookies
@@ -3360,6 +2510,870 @@ pubcookie_post_handler (ngx_http_request_t * r)
     rc2 = pubcookie_finish_request(r);
     return (rc2 == NGX_DECLINED ? rc : rc2);
 }
+
+
+/**************************************
+ * Configuration
+ */
+
+static char *pubcookie_post_inact_exp (ngx_conf_t *cf, void *data, void *conf);
+static ngx_conf_post_t pubcookie_conf_inact_exp = { pubcookie_post_inact_exp };
+
+static char *pubcookie_post_hard_exp (ngx_conf_t *cf, void *data, void *conf);
+static ngx_conf_post_t pubcookie_conf_hard_exp = { pubcookie_post_hard_exp };
+
+static char *pubcookie_post_login (ngx_conf_t *cf, void *data, void *conf);
+static ngx_conf_post_t pubcookie_conf_login = { pubcookie_post_login };
+
+static char *pubcookie_post_domain (ngx_conf_t *cf, void *data, void *conf);
+static ngx_conf_post_t pubcookie_conf_domain = { pubcookie_post_domain };
+
+static ngx_conf_enum_t pubcookie_enum_method[] = {
+    { ngx_string("get"), 0 },
+    { ngx_string("post"), 1 },
+    { ngx_null_string, 0 }
+};
+
+static ngx_conf_enum_t pubcookie_enum_crypt[] = {
+    { ngx_string("des"), PBC_CRYPT_DES },
+    { ngx_string("aes"), PBC_CRYPT_AES },
+    { ngx_string("aes+domain"), PBC_CRYPT_AES_D },
+    { ngx_null_string, 0 }
+};
+
+static char *pubcookie_set_appid (ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static char *pubcookie_set_appsrvid (ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+
+static char *pubcookie_post_noprompt (ngx_conf_t *cf, void *data, void *conf);
+static ngx_conf_post_t pubcookie_conf_noprompt = { pubcookie_post_noprompt };
+
+static char *pubcookie_post_super_debug (ngx_conf_t *cf, void *data, void *conf);
+static ngx_conf_post_t pubcookie_conf_super_debug = { pubcookie_post_super_debug };
+
+static char *pubcookie_set_post_url (ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static char *pubcookie_set_no_blank (ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+
+static char *pubcookie_post_dirdepth (ngx_conf_t *cf, void *data, void *conf);
+static ngx_conf_post_t pubcookie_conf_dirdepth = { pubcookie_post_dirdepth };
+
+static char *pubcookie_set_session_reauth (ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static char *pubcookie_set_add_request (ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static char *pubcookie_set_accept_realms (ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+
+
+static ngx_command_t  ngx_pubcookie_commands[] = {
+    /* "Set the inactivity expire time for PubCookies." */
+    { ngx_string("pubcookie_inactive_expire"),
+      NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_num_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_pubcookie_loc_t, inact_exp),
+      &pubcookie_conf_inact_exp },
+
+    /* "Set the hard expire time for PubCookies." */
+    { ngx_string("pubcookie_hard_expire"),
+      NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_num_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_pubcookie_loc_t, hard_exp),
+      &pubcookie_conf_hard_exp },
+
+    /* "Set super debugging." */
+    { ngx_string("pubcookie_super_debug"),
+      NGX_HTTP_MAIN_CONF|NGX_CONF_FLAG,
+      ngx_conf_set_flag_slot,
+      NGX_HTTP_SRV_CONF_OFFSET,
+      offsetof(ngx_pubcookie_srv_t, dummy_super_debug),
+      &pubcookie_conf_super_debug },
+
+    /* "Set the login page for PubCookies." */
+    { ngx_string("pubcookie_login"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_str_slot,
+      NGX_HTTP_SRV_CONF_OFFSET,
+      offsetof(ngx_pubcookie_srv_t, login),
+      &pubcookie_conf_login },
+
+    /* "Set the domain for PubCookies." */
+    { ngx_string("pubcookie_domain"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_str_slot,
+      NGX_HTTP_SRV_CONF_OFFSET,
+      offsetof(ngx_pubcookie_srv_t, enterprise_domain),
+      &pubcookie_conf_domain },
+
+    /* "Set the location of PubCookie encryption keys." */
+    { ngx_string("pubcookie_key_dir"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_str_slot,
+      NGX_HTTP_SRV_CONF_OFFSET,
+      offsetof(ngx_pubcookie_srv_t, keydir),
+      NULL },
+
+    /* "Set the name of the certfile for Granting PubCookies." */
+    { ngx_string("pubcookie_granting_cert_file"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_str_slot,
+      NGX_HTTP_SRV_CONF_OFFSET,
+      offsetof(ngx_pubcookie_srv_t, granting_cert_file),
+      NULL },
+
+    /* "Set the name of the keyfile for Granting PubCookies." */
+    { ngx_string("pubcookie_granting_key_file"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_str_slot,
+      NGX_HTTP_SRV_CONF_OFFSET,
+      offsetof(ngx_pubcookie_srv_t, granting_key_file),
+      NULL },
+
+    /* "Set the name of the keyfile for Session PubCookies." */
+    { ngx_string("pubcookie_session_key_file"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_str_slot,
+      NGX_HTTP_SRV_CONF_OFFSET,
+      offsetof(ngx_pubcookie_srv_t, ssl_key_file),
+      NULL },
+
+    /* "Set the name of the certfile for Session PubCookies." */
+    { ngx_string("pubcookie_session_cert_file"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_str_slot,
+      NGX_HTTP_SRV_CONF_OFFSET,
+      offsetof(ngx_pubcookie_srv_t, ssl_cert_file),
+      NULL },
+
+    /* "Set the name of the encryption keyfile for PubCookies." */
+    { ngx_string("pubcookie_crypt_key_file"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_str_slot,
+      NGX_HTTP_SRV_CONF_OFFSET,
+      offsetof(ngx_pubcookie_srv_t, crypt_key),
+      NULL },
+
+    /* "Set the name of the EGD Socket if needed for randomness." */
+    { ngx_string("pubcookie_egd_device"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_str_slot,
+      NGX_HTTP_SRV_CONF_OFFSET,
+      offsetof(ngx_pubcookie_srv_t, egd_socket),
+      NULL },
+
+    /* "Set post response URL. Def = /PubCookie.reply" */
+    { ngx_string("pubcookie_post"),
+      NGX_HTTP_LOC_CONF|NGX_CONF_NOARGS,
+      pubcookie_set_post_url,
+      NGX_HTTP_SRV_CONF_OFFSET,
+      offsetof(ngx_pubcookie_srv_t, post_url),
+      NULL },
+
+    /* "Set login method (GET/POST). Def = GET" */
+    { ngx_string("pubcookie_login_method"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_enum_slot,
+      NGX_HTTP_SRV_CONF_OFFSET,
+      offsetof(ngx_pubcookie_srv_t, use_post),
+      pubcookie_enum_method },
+
+    /* "Set encryption method (AES/DES)." */
+    { ngx_string("pubcookie_encryption"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_enum_slot,
+      NGX_HTTP_SRV_CONF_OFFSET,
+      offsetof(ngx_pubcookie_srv_t, crypt_alg),
+      pubcookie_enum_crypt },
+
+    /* "Set the name of the application." */
+    { ngx_string("pubcookie_app_id"),
+      NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      pubcookie_set_appid,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_pubcookie_loc_t, appid),
+      NULL },
+
+    /* "Set the name of the server(cluster)." */
+    { ngx_string("pubcookie_app_srv_id"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
+      pubcookie_set_appsrvid,
+      NGX_HTTP_SRV_CONF_OFFSET,
+      offsetof(ngx_pubcookie_srv_t, appsrvid),
+      NULL },
+
+    /* "Do not prompt for id and password if not already logged in." */
+    { ngx_string("pubcookie_no_prompt"),
+      NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
+      ngx_conf_set_flag_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_pubcookie_loc_t, noprompt),
+      &pubcookie_conf_noprompt },
+
+    /* "End application session and possibly login session" */
+    { ngx_string("pubcookie_end_session"),
+      NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_str_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_pubcookie_loc_t, end_session),
+      NULL },
+
+    /* "Do not blank cookies.". DEPRECATED in favour of pubcookie_no_obscure_cookies */
+    { ngx_string("pubcookie_no_blank"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_NOARGS,
+      pubcookie_set_no_blank,
+      NGX_HTTP_SRV_CONF_OFFSET,
+      offsetof(ngx_pubcookie_srv_t, noblank),
+      NULL },
+
+    /* "Do not obscure Pubcookie cookies." */
+    { ngx_string("pubcookie_no_obscure_cookies"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_FLAG,
+      ngx_conf_set_flag_slot,
+      NGX_HTTP_SRV_CONF_OFFSET,
+      offsetof(ngx_pubcookie_srv_t, noblank),
+      NULL },
+
+    /* Added by ddj@cmu.edu on 2006/05/01 to address security issue at CMU. */
+    /* "Determines whether a new AppID replaces or is catenated to the old App ID." */
+    { ngx_string("pubcookie_catenate_app_ids"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_FLAG,
+      ngx_conf_set_flag_slot,
+      NGX_HTTP_SRV_CONF_OFFSET,
+      offsetof(ngx_pubcookie_srv_t, catenate),
+      NULL },
+    /* End of ddj@cmu.edu's change. */
+
+    /* "Specify the Directory Depth for generating default AppIDs." */
+    { ngx_string("pubcookie_dir_depth"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_num_slot,
+      NGX_HTTP_SRV_CONF_OFFSET,
+      offsetof(ngx_pubcookie_srv_t, dirdepth),
+      &pubcookie_conf_dirdepth },
+
+    /* "Force reauthentication for new sessions with specified timeout" */
+    { ngx_string("pubcookie_session_reauth"),
+      NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      pubcookie_set_session_reauth,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_pubcookie_loc_t, session_reauth),
+      NULL },
+
+    /* "Send the following options to the login server along with authentication requests" */
+    { ngx_string("pubcookie_add_request"),
+      NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
+      pubcookie_set_add_request,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_pubcookie_loc_t, addl_requests),
+      NULL },
+
+    /* "Only accept realms in this list" */
+    { ngx_string("pubcookie_accept_realm"),
+      NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
+      pubcookie_set_accept_realms,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_pubcookie_loc_t, accept_realms),
+      NULL },
+
+    /* "Strip the realm (and set the REMOTE_REALM envirorment variable)" */
+    { ngx_string("pubcookie_strip_realm"),
+      NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
+      ngx_conf_set_flag_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_pubcookie_loc_t, strip_realm),
+      NULL },
+
+    /* "Specify on-demand pubcookie directives." */
+    { ngx_string("pubcookie_on_demand"),
+      NGX_HTTP_LOC_CONF|NGX_CONF_TAKE2,
+      ngx_conf_set_keyval_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_pubcookie_loc_t, keydirs),
+      NULL },
+
+    /* "Set to leave credentials in place after cleanup" */
+    { ngx_string("pubcookie_no_clean_creds"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_FLAG,
+      ngx_conf_set_flag_slot,
+      NGX_HTTP_SRV_CONF_OFFSET,
+      offsetof(ngx_pubcookie_srv_t, no_clean_creds),
+      NULL },
+
+    /* "Set to ignore non-standard server port" */
+    { ngx_string("pubcookie_behind_proxy"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_FLAG,
+      ngx_conf_set_flag_slot,
+      NGX_HTTP_SRV_CONF_OFFSET,
+      offsetof(ngx_pubcookie_srv_t, behind_proxy),
+      NULL },
+
+    ngx_null_command
+};
+
+
+static struct {
+    const char *name;
+    size_t offset;
+} pbc_cfg_str_fields[] = {
+    { "enterprise_domain",  offsetof(ngx_pubcookie_srv_t, enterprise_domain) },
+    { "ssl_key_file",       offsetof(ngx_pubcookie_srv_t, ssl_key_file) },
+    { "ssl_cert_file",      offsetof(ngx_pubcookie_srv_t, ssl_cert_file) },
+    { "granting_key_file",  offsetof(ngx_pubcookie_srv_t, granting_key_file) },
+    { "granting_cert_file", offsetof(ngx_pubcookie_srv_t, granting_cert_file) },
+    { "crypt_key",          offsetof(ngx_pubcookie_srv_t, crypt_key) },
+    { "login_uri",          offsetof(ngx_pubcookie_srv_t, login) },
+    { "keydir",             offsetof(ngx_pubcookie_srv_t, keydir) },
+    { "appsrvid",           offsetof(ngx_pubcookie_srv_t, appsrvid) },
+    { "egd_socket",         offsetof(ngx_pubcookie_srv_t, egd_socket) },
+    { "post_url",           offsetof(ngx_pubcookie_srv_t, post_url) },
+    { NULL, 0 }
+};
+
+
+static ngx_http_module_t  ngx_pubcookie_module_ctx = {
+    NULL,                             /* preconfiguration */
+    ngx_pubcookie_init,               /* postconfiguration */
+
+    NULL,                             /* create main configuration */
+    NULL,                             /* init main configuration */
+
+    ngx_pubcookie_create_srv_conf,    /* create server configuration */
+    ngx_pubcookie_merge_srv_conf,     /* merge server configuration */
+
+    ngx_pubcookie_create_loc_conf,    /* create location configuration */
+    ngx_pubcookie_merge_loc_conf      /* merge location configuration */
+};
+
+ngx_module_t ngx_pubcookie_module = {
+    NGX_MODULE_V1,
+    &ngx_pubcookie_module_ctx,             /* module context */
+    ngx_pubcookie_commands,                /* module directives */
+    NGX_HTTP_MODULE,                       /* module type */
+    NULL,                                  /* init master */
+    NULL,                                  /* init module */
+    NULL,                                  /* init process */
+    NULL,                                  /* init thread */
+    NULL,                                  /* exit thread */
+    NULL,                                  /* exit process */
+    NULL,                                  /* exit master */
+    NGX_MODULE_V1_PADDING
+};
+
+
+static char *
+pubcookie_post_super_debug (ngx_conf_t *cf, void *data, void *conf)
+{
+    ngx_flag_t *fp = conf;
+    pubcookie_super_debug = *fp;
+    return NGX_CONF_OK;
+}
+
+static char *
+pubcookie_post_inact_exp (ngx_conf_t *cf, void *data, void *conf)
+{
+    ngx_flag_t *np = conf;
+
+    /* how to turn off inactivity checking */
+    if (*np == -1) {
+        return NGX_CONF_OK;
+    }
+
+    /* check for valid range */
+    if (*np < PBC_MIN_INACT_EXPIRE) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+            "pubcookie: inactivity expire parameter less then allowed minimum of %d, requested %d.",
+            PBC_MIN_INACT_EXPIRE, *np);
+        return NGX_CONF_ERROR;
+    }
+
+    return NGX_CONF_OK;
+}
+
+static char *
+pubcookie_post_hard_exp (ngx_conf_t *cf, void *data, void *conf)
+{
+    ngx_flag_t *np = conf;
+
+    if (*np > PBC_MAX_HARD_EXPIRE) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+            "pubcookie: Hard expire parameter greater then allowed maximium of %d, requested %d.",
+            PBC_MAX_HARD_EXPIRE, *np);
+        return NGX_CONF_ERROR;
+    } else if (*np < PBC_MIN_HARD_EXPIRE) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+            "pubcookie: Hard expire parameter less then allowed minimum of %d, requested %d.",
+            PBC_MIN_HARD_EXPIRE, *np);
+        return NGX_CONF_ERROR;
+    }
+
+    return NGX_CONF_OK;
+}
+
+static char *
+pubcookie_post_login (ngx_conf_t *cf, void *data, void *conf)
+{
+    ngx_str_t *sp = conf;
+    if (0 != ngx_strncmp(sp->data, "https://", 8))
+        return "pubcookie: pubcookie_login must start with https://";
+    return NGX_CONF_OK;
+}
+
+static char *
+pubcookie_post_domain (ngx_conf_t *cf, void *data, void *conf)
+{
+    ngx_str_t *sp = conf;
+
+    if (sp->len > 0 && sp->data[0] != '.') {
+        static ngx_str_t dot = ngx_string(".");
+        ngx_strcat3(cf->pool, sp, &dot, sp, NULL);
+    }
+
+    return NGX_CONF_OK;
+}
+
+static void
+normalize_id_string (ngx_pool_t *pool, ngx_str_t *dst, ngx_str_t *src)
+{
+    register u_char *c;
+    register int i;
+    c = dst->data = ngx_pnalloc (pool, src->len * 3 + 1);
+    for (i = 0; i < src->len; ++i) {
+        switch (src->data[i]) {
+        case ' ': *c++ = '+'; break;
+        case '%': SET_C_LETTER(c,'2','5'); break;
+        case '&': SET_C_LETTER(c,'2','6'); break;
+        case '+': SET_C_LETTER(c,'2','B'); break;
+        case ':': SET_C_LETTER(c,'3','A'); break;
+        case ';': SET_C_LETTER(c,'3','B'); break;
+        case '=': SET_C_LETTER(c,'3','D'); break;
+        case '?': SET_C_LETTER(c,'3','F'); break;
+        default:  *c++ = src->data[i]; break;
+        }
+    }
+    *c = '\0';
+    dst->len = (int)(c - dst->data);
+}
+
+static char *
+pubcookie_set_appid (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+{
+    ngx_pubcookie_loc_t *cfg = conf;
+    ngx_pubcookie_srv_t *scfg = ngx_http_conf_get_module_srv_conf(cf, ngx_pubcookie_module);
+    ngx_str_t *value = cf->args->elts;
+
+    normalize_id_string(cf->pool, &cfg->appid, &value[1]);
+    scfg->locations++; /* mark server as pubcookie-enabled */
+    return NGX_CONF_OK;
+}
+
+static char *
+pubcookie_set_appsrvid (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+{
+    ngx_pubcookie_srv_t *scfg = conf;
+    ngx_str_t *value = cf->args->elts;
+
+    normalize_id_string(cf->pool, &scfg->appsrvid, &value[1]);
+    return NGX_CONF_OK;
+}
+
+static char *
+pubcookie_post_noprompt (ngx_conf_t *cf, void *data, void *conf)
+{
+    ngx_flag_t *fp = conf;
+    if (*fp == 0)
+        *fp = -1;
+    return NGX_CONF_OK;
+}
+
+static char *
+pubcookie_set_post_url (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+{
+    ngx_pubcookie_srv_t *scfg = conf;
+    ngx_http_core_loc_conf_t  *core_lcf;
+
+    core_lcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
+    scfg->post_url = core_lcf->name;
+    core_lcf->handler = pubcookie_post_handler;
+
+    return NGX_CONF_OK;
+}
+
+/* allow admin to set a "dont blank the cookie" mode for proxy with pubcookie */
+/* DEPRECATED in favour of PubcookieNoObscureCookie                          */
+static char *
+pubcookie_set_no_blank (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+{
+    ngx_pubcookie_srv_t *scfg = conf;
+    scfg->noblank = 1;
+    pc_cf_log (cf, "WARNING: pubcookie_no_nlank is deprecated in favor of pubcookie_no_obscure_cookie");
+    return NGX_CONF_OK;
+}
+
+static char *
+pubcookie_post_dirdepth (ngx_conf_t *cf, void *data, void *conf)
+{
+    ngx_flag_t *np = conf;
+
+    if (*np < 0)
+        return "pubcookie: could not convert Directory Depth for AppID parameter to nonnegative number.";
+
+    /* externally we count directories but internally we cound slashes
+       external    internal
+       /            == 0          1
+       /blah/       == 1          2
+       /blah/blong/ == 2          3
+       and internally zero is 'unset'
+     */
+    (*np)++;
+
+    return NGX_CONF_OK;
+}
+
+static char *
+pubcookie_set_session_reauth (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+{
+    ngx_pubcookie_loc_t *cfg = conf;
+    ngx_str_t *value = cf->args->elts;
+
+    if (value[1].len == 0)
+        cfg->session_reauth = 0;
+    else if (ngx_strcasecmp_c (value[1], "on"))
+        cfg->session_reauth = 1;
+    else if (ngx_strcasecmp_c (value[1], "off"))
+        cfg->session_reauth = 0;
+    else {
+        cfg->session_reauth = ngx_atoi (value[1].data, value[1].len);
+        if (cfg->session_reauth == NGX_ERROR)
+            return "pubcookie: cannot convert session_reauth to integer";
+    }
+    if (cfg->session_reauth < 0)
+        cfg->session_reauth = 1;
+    return NGX_CONF_OK;
+}
+
+static char *
+pubcookie_set_add_request (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+{
+    static ngx_str_t ampersand = ngx_string("&");
+    ngx_pubcookie_loc_t *cfg = conf;
+    ngx_str_t *value = cf->args->elts;
+    int i;
+
+    for (i = 1; i < cf->args->nelts; i++)
+        ngx_strcat3(cf->pool, &cfg->addl_requests,
+                    &cfg->addl_requests, &ampersand, &value[i]);
+
+    return NGX_CONF_OK;
+}
+
+static char *
+pubcookie_set_accept_realms (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+{
+    static ngx_str_t blank = ngx_string(" ");
+    ngx_pubcookie_loc_t *cfg = conf;
+    ngx_str_t *value = cf->args->elts;
+    int i;
+
+    for (i = 1; i < cf->args->nelts; i++) {
+        ngx_strcat3(cf->pool, &cfg->addl_requests,
+                    &cfg->addl_requests, &blank, &value[i]);
+    }
+
+    return NGX_CONF_OK;
+}
+
+
+static void *
+ngx_pubcookie_create_loc_conf(ngx_conf_t *cf)
+{
+    ngx_pubcookie_loc_t *cfg;
+
+    if (NULL == (cfg = ngx_pcalloc(cf->pool, sizeof(ngx_pubcookie_loc_t))))
+        return NULL;
+    cfg->signature = PBC_LOC_SIGNATURE;
+
+    cfg->inact_exp = NGX_CONF_UNSET;
+    cfg->hard_exp = NGX_CONF_UNSET;
+    cfg->non_ssl_ok = NGX_CONF_UNSET;
+    cfg->session_reauth = NGX_CONF_UNSET;
+    cfg->strip_realm = NGX_CONF_UNSET;
+    cfg->noprompt = NGX_CONF_UNSET;
+
+    return cfg;
+}
+
+static char *
+ngx_pubcookie_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
+{
+    ngx_pubcookie_loc_t  *prv = parent;
+    ngx_pubcookie_loc_t  *cfg = child;
+
+    ngx_conf_merge_value(cfg->inact_exp, prv->inact_exp, PBC_DEFAULT_INACT_EXPIRE);
+    ngx_conf_merge_value(cfg->hard_exp, prv->hard_exp, PBC_DEFAULT_HARD_EXPIRE);
+    ngx_conf_merge_value(cfg->non_ssl_ok, prv->non_ssl_ok, 0);
+    ngx_conf_merge_value(cfg->session_reauth, prv->session_reauth, 0);
+    ngx_conf_merge_value(cfg->strip_realm, prv->strip_realm, 0);
+    ngx_conf_merge_value(cfg->noprompt, prv->noprompt, 0);
+
+    /***
+     * Okay.  We might need to catenate app IDs.  We'll know at
+     * request time.  So, let's make sure the "appid" is set assuming
+     * we *won't* have to, and into "oldappid" goes the stuff we'll
+     * need to include if we *do* have to.  Then we will have all the
+     * data we need to go either way at request time.
+     *
+     * ddj@cmu.edu 2006/05/10
+     */
+
+    /* Did the parent have an app ID? */
+    if (prv->appid.data) {
+        /* Yes.  Did the parent also have an *old* app ID? */
+        if (prv->oldappid.data) {
+	        /* Yes.  Glue them together and store as "old app ID". */
+	        ngx_strcat3(cf->pool, &cfg->oldappid, &prv->oldappid, &prv->appid, NULL);
+        } else {
+            /* No.  The parent's app ID is now the "old app ID". */
+            cfg->oldappid = prv->appid;
+        }
+    }
+
+    /* life is much easier if the default value is zero or NULL */
+    if (! cfg->appid.data)
+        cfg->appid = prv->appid;
+
+    if (! cfg->end_session.data)
+        cfg->end_session = prv->end_session;
+
+    if (prv->addl_requests.data) {
+        static ngx_str_t ampersand = ngx_string("&");
+        if (cfg->addl_requests.data)
+	        ngx_strcat3(cf->pool, &cfg->addl_requests,
+	                    &prv->addl_requests, &ampersand, &cfg->addl_requests);
+        else
+            cfg->addl_requests = prv->addl_requests;
+    }
+
+    if (! cfg->accept_realms.data)
+        cfg->accept_realms = prv->accept_realms;
+
+    if (cfg->keydirs && ! prv->keydirs) {
+        cfg->keydirs = prv->keydirs;
+    } else if (cfg->keydirs && prv->keydirs) {
+        ngx_keyval_t *kv_old = prv->keydirs->elts;
+        int i;
+        for (i = 0; i < prv->keydirs->nelts; i++) {
+            ngx_keyval_t *kv_new = ngx_array_push(cfg->keydirs);
+            if (! kv_new)
+                return "pubcookie: not enough memory to merge keyed directives";
+            *kv_new = kv_old[i];
+        }
+    }
+
+    return NGX_CONF_OK;
+}
+
+
+static void *
+ngx_pubcookie_create_srv_conf(ngx_conf_t *cf)
+{
+    ngx_pubcookie_srv_t  *scfg;
+
+    if (NULL == (scfg = ngx_pcalloc(cf->pool, sizeof(ngx_pubcookie_srv_t))))
+        return NULL;
+
+    scfg->signature = PBC_SRV_SIGNATURE;
+    scfg->log = cf->log;
+    scfg->pool = cf->pool;
+
+    scfg->dirdepth = NGX_CONF_UNSET;
+    scfg->noblank = NGX_CONF_UNSET;
+    scfg->catenate = NGX_CONF_UNSET;
+    scfg->no_clean_creds = NGX_CONF_UNSET;
+    scfg->use_post = NGX_CONF_UNSET;
+    scfg->behind_proxy = NGX_CONF_UNSET;
+
+    scfg->crypt_alg = NGX_CONF_UNSET_UINT;
+    scfg->dummy_super_debug = NGX_CONF_UNSET;
+
+    return scfg;
+}
+
+
+static char *
+ngx_pubcookie_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child)
+{
+    ngx_pubcookie_srv_t *sprv = parent;
+    ngx_pubcookie_srv_t *scfg = child;
+    int i;
+
+    ngx_conf_merge_value(scfg->dirdepth, sprv->dirdepth, PBC_DEFAULT_DIRDEPTH);
+    ngx_conf_merge_value(scfg->noblank, sprv->noblank, 0);
+    ngx_conf_merge_value(scfg->catenate, sprv->catenate, 0);
+    ngx_conf_merge_value(scfg->no_clean_creds, sprv->no_clean_creds, 0);
+    ngx_conf_merge_value(scfg->use_post, sprv->use_post, 0);
+    ngx_conf_merge_uint_value(scfg->crypt_alg, sprv->crypt_alg, PBC_DEF_CRYPT);
+    ngx_conf_merge_value(scfg->behind_proxy, sprv->behind_proxy, 0);
+
+    for (i = 0; pbc_cfg_str_fields[i].name != NULL; i++) {
+        int off = pbc_cfg_str_fields[i].offset;
+        ngx_str_t *ps = (ngx_str_t *)((char *) sprv + off);
+        ngx_str_t *cs = (ngx_str_t *)((char *) scfg + off);
+        if (NULL == cs->data)
+            *cs = *ps;
+    }
+
+    if (0 == scfg->locations)
+        return NGX_CONF_OK;
+
+    if (scfg->use_post && NULL == scfg->post_url.data)
+        return "pubcookie_post: post reply location e.g. /PubCookie.reply must be set!";
+
+    if (NULL == scfg->ssl_key_file.data)
+        return "pubcookie_session_key_file: configuration directive must be set!";
+    if (NULL == scfg->ssl_cert_file.data)
+        return "pubcookie_session_cert_file: configuration directive must be set!";
+    if (NULL == scfg->granting_cert_file.data)
+        return "pubcookie_granting_cert_file: configuration directive must be set!";
+    if (NULL == scfg->keydir.data)
+        return "pubcookie_key_dir: configuration directive must be set!";
+    if (NULL == scfg->login.data)
+        return "pubcookie_login: configuration directive must be set!";
+
+    if (libpbc_pubcookie_init((pool *) scfg, &scfg->sectext) != PBC_OK)
+        return "pubcookie_init: libpbc_pubcookie_init failed.";
+    pc_cf_log(cf, "pubcookie_init: libpbc init done");
+
+    return NGX_CONF_OK;
+}
+
+#if 0
+static char *
+create_location (ngx_conf_t *cf, const char *loc_name)
+{
+    void *core_srv_conf;
+    ngx_command_t *cmd;
+    ngx_str_t arg_cmd = ngx_string("location");
+    ngx_str_t str_loc;
+    ngx_str_t str_prefix = ngx_string("=/");
+    ngx_str_t arg_loc;
+    ngx_conf_t my_cf;
+    ngx_array_t my_args;
+    ngx_str_t *value;
+    ngx_conf_file_t my_conf_file;
+    ngx_buf_t my_buf;
+    char *result;
+
+    core_srv_conf = ngx_http_conf_get_module_srv_conf(cf, ngx_http_core_module);
+    for (cmd = ngx_http_core_module.commands; cmd->name.data; cmd++) {
+        if (ngx_strcmp_c(cmd->name, "location"))
+            break;
+    }
+    if (NULL == cmd->name.data || NULL == core_srv_conf) {
+        return "Cannot find command";
+    }
+
+    /* simulate a null file */
+    my_cf = *cf;
+    my_buf = *cf->conf_file->buffer;
+    my_conf_file = *cf->conf_file;
+    my_buf.pos = my_buf.last = 0;
+    my_conf_file.buffer = &my_buf;
+    my_conf_file.file.offset = 0;
+    my_conf_file.file.info.st_size = 0;
+    my_conf_file.file.fd = NGX_INVALID_FILE;
+    my_cf.conf_file = &my_conf_file;
+
+    /* create arguments: "location" "=/LOCNAME" */
+    str_loc.data = (u_char *) loc_name;
+    str_loc.len = strlen(loc_name);
+    ngx_strcat3(cf->pool, &arg_loc, &str_prefix, &str_loc, NULL);
+    ngx_array_init(&my_args, cf->pool, 2, sizeof(ngx_str_t));
+    my_cf.args = &my_args;
+    value = my_args.elts;
+    my_args.nelts = 2;
+    value[0] = arg_cmd;
+    value[1] = arg_loc;
+
+    result = (*cmd->set)(&my_cf, cmd, core_srv_conf);
+    return result;
+}
+#endif
+
+
+/*
+ * Debugging
+ */
+static void
+dump_recs(ngx_http_request_t *r, ngx_pubcookie_loc_t *c, ngx_pubcookie_srv_t *s)
+{
+#if defined(DEBUG_DUMP_RECS)
+    ngx_pool_t *p = r->pool;
+    pc_req_log(r, "+--- dump_loc_req ---");
+    pc_req_log(r, "| login=%V domain=%V",
+            &s->login, &s->enterprise_domain);
+    pc_req_log(r, "| keydir=%V grant_cf=%V ssl_keyf=%V ssl_cf=%V",
+            &s->keydir, &s->granting_cert_file, &s->ssl_key_file, &s->ssl_cert_file);
+    pc_req_log(r, "| crypt_key=%V egd_socket=%V",
+            &s->crypt_key, &s->egd_socket);
+    pc_req_log(r, "| dirdepth=%d noblank=%d catenate=%d no_clean_creds=%d use_post=%d behind_proxy=%d",
+            s->dirdepth, s->noblank, s->catenate, s->no_clean_creds, s->use_post, s->behind_proxy);
+    pc_req_log(r, "| oldappid=%V appid=%V appsrvid=%V",
+            &c->oldappid, &c->appid, &s->appsrvid);
+    pc_req_log(r, "| post_url=%V end_session=%V addl_requests=%V accept_realms=%V",
+            &s->post_url, &c->end_session, &c->addl_requests, &c->accept_realms);
+    pc_req_log(r, "| crypt_alg=%d inact_exp=%d hard_exp=%d non_ssl_ok=%d session_reauth=%d",
+            s->crypt_alg, c->inact_exp, c->hard_exp, c->non_ssl_ok, c->session_reauth);
+    pc_req_log(r, "| strip_realm=%d noprompt=%d",
+            c->strip_realm, c->noprompt);
+    pc_req_log(r, "+----------------------------------");
+#endif /* DEBUG_DUMP_RECS */
+}
+
+static void
+dump_cookie_data(ngx_http_request_t *r, const char *prefix, pbc_cookie_data *cookie_data)
+{
+#if defined(DEBUG_DUMP_RECS)
+    cookie_data_struct *d = &cookie_data->broken;
+    pc_req_log(r, "cookie_data(%s): user=\"%s\" version=\"%s\" appsrvid=\"%s\" appid=\"%s\"",
+            prefix, d->user, d->version, d->appsrvid, d->appid);
+#endif /* DEBUG_DUMP_RECS */
+}
+
+
+/*
+ * Configuration helper for libpbc library
+ */
+
+const char *
+libpbc_config_getstring(pool *ptr, const char *name, const char *defval)
+{
+    ngx_pubcookie_srv_t *scfg = NULL;
+    int i;
+
+    if (NULL != ptr) {
+        if (*(uint32_t *)ptr == PBC_SRV_SIGNATURE)
+            scfg = (ngx_pubcookie_srv_t *) ptr;
+        else
+            scfg = ngx_http_get_module_srv_conf(((ngx_http_request_t *)ptr), ngx_pubcookie_module);
+    }
+
+    if (NULL == scfg) {
+        pc_log_log(log_of(ptr), "config_getstring: server configuration not found for \"%s\"", name);
+        return defval;
+    }
+
+    for (i = 0; pbc_cfg_str_fields[i].name != NULL; i++) {
+        if (0 == strcmp(pbc_cfg_str_fields[i].name, name)) {
+            ngx_str_t *nsp = (ngx_str_t *) ((char *)scfg + pbc_cfg_str_fields[i].offset);
+            char * val = nsp->data ? str2charp(pool_of(ptr), nsp) : (char *) defval;
+            pc_log_log(log_of(ptr), "config_getstring: value of \"%s\" is \"%s\"",
+                        name, val?:"(NULL)");
+            return val;
+        }
+    }
+
+    /* not found */
+    pc_log_log(log_of(ptr), "config_getstring: field \"%s\" not found !!", name);
+    return defval;
+}
+
 
 /* SVN Id: $Id$ */
 
