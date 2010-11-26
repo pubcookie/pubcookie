@@ -2269,6 +2269,9 @@ auth_failed_handler (ngx_http_request_t * r,
                    "auth_failed_handler: redirect sent. uri: %V reason: %d",
                    &mr->uri, rr->redir_reason_no);
 
+    /* workaround for nginx problems with KeepAlive during redirections. */
+    r->keepalive = 0;
+
 END:
     if (NULL != refresh)
         ap_pfree(p, refresh);
