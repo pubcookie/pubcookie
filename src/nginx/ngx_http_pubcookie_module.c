@@ -7,10 +7,18 @@
  */
 
 #include "ngx_http_pubcookie.h"
+#include <ctype.h>
+
 
 /***********************************
- * Globals
+ * Definitions
  */
+
+
+/* Feature macros */
+#undef DEBUG_DUMP_RECS
+#undef REDIRECT_IN_HEADER
+#undef PORT80_TEST
 
 /*
  * ap_psprintf() by default allocates 4K buffers
@@ -19,7 +27,44 @@
  */
 #define AP_PSPRINTF_COMPACT_STRINGS 0
 
-#define DEBUG_DUMP_RECS
+
+#define DONE NGX_DONE
+#define OK   NGX_OK
+
+#define ME(r) ap_get_server_name(r)
+
+#define MAX_POST_DATA PBC_4K
+
+#define ngx_pubcookie_module ngx_http_pubcookie_module
+
+#define ngx_str_assign(a,s)     ({ \
+        u_char *_p = (u_char *)(s); \
+        (a).len = ngx_strlen(_p); \
+        (a).data = _p; \
+    })
+
+#define ngx_strcmp_c(ns,cs) ((ns).len == sizeof(cs)-1 && \
+                            ! ngx_strncmp((ns).data, (u_char*)(cs), sizeof(cs)-1))
+#define ngx_strcasecmp_c(ns,cs) ((ns).len == sizeof(cs)-1 && \
+                            ! ngx_strncasecmp((ns).data, (u_char*)(cs), sizeof(cs)-1))
+
+#define ngx_strcmp_eq(ns1,ns2) ((ns1).len == (ns2).len && \
+                            ! ngx_strncmp((ns1).data, (ns2).data, (ns1).len))
+
+#define get_hdr_in(R,H) (R->headers_in.H ? str2charp(R->pool, &R->headers_in.H->value) : NULL)
+
+#define main_rrec(r)    ((r)->main)
+#define top_rrec(r)     ((r)->main)
+
+#define pc_req_log(r,args...)  pbc_ngx_log((r)->connection->log,PC_LOG_DEBUG,args)
+#define pc_pool_log(p,args...) pbc_ngx_log((p)->log,PC_LOG_DEBUG,args)
+#define pc_cf_log(c,args...)   pbc_ngx_log((c)->log,PC_LOG_DEBUG,args)
+#define pc_log_log(l,args...)  pbc_ngx_log((l),PC_LOG_DEBUG,args)
+
+
+/***********************************
+ * Globals
+ */
 
 int pubcookie_super_debug = 0;
 
@@ -45,7 +90,7 @@ extern ngx_module_t ngx_pubcookie_module;
 
 static int ngx_strcat3 (ngx_pool_t *pool, ngx_str_t *res, ngx_str_t *s1, ngx_str_t *s2, ngx_str_t *s3);
 
-static char *encode_get_args (request_rec *r, char *in, int ec);
+static char *encode_get_args (ngx_http_request_t *r, char *in, int ec);
 static char *get_post_data (ngx_http_request_t * r, int post_len);
 
 static ngx_int_t pubcookie_post_handler (ngx_http_request_t *r);
@@ -68,15 +113,23 @@ static void dump_cookie_data(ngx_http_request_t *r, const char *prefix, pbc_cook
 
 const char * libpbc_config_getstring(pool *ptr, const char *name, const char *defval);
 
+
 /**************************************
  * Apache/APR compatibility
  */
 
-#define ap_pfree(p,v) ngx_pfree(p,v)
+#define ap_log_error(v,r,args...)   pbc_ngx_log((r)->connection->log,v,args)
+#define ap_log_rerror(v,r,args...)  pbc_ngx_log((r)->connection->log,v,args)
+
+#define ap_pstrdup(p,s) __ap_pstrdup(p,s)
+#define ap_palloc(p,n)  ngx_palloc(p,n)
+#define ap_pfree(p,v)   ngx_pfree(p,v)
 
 #define ap_table_add(tbl,hdr,val) add_out_header(r,hdr,val,1)
 
+typedef ngx_http_request_t request_rec;
 typedef ngx_array_t table;
+
 
 static table *
 ap_make_table (ngx_pool_t *p, int n)
@@ -88,7 +141,7 @@ static inline ngx_hash_key_t *
 __ap_table_find (table *t, const char *key)
 {
     ngx_hash_key_t *d = t->elts;
-    int i, n = strlen(key);
+    ngx_uint_t i, n = strlen(key);
     for (i = 0; i < t->nelts; i++)
         if (d[i].key.len == n && 0 == strncmp((char *) d[i].key.data, key, n))
             return &d[i];
@@ -118,7 +171,7 @@ ap_table_get (table *t, const char *key)
 static char *
 ap_psprintf(ngx_pool_t *p, const char *fmt, ...)
 {
-    u_char *s, *e, *d;
+    u_char *s, *e;
     va_list args;
     const int m = PBC_4K;
 
@@ -132,7 +185,7 @@ ap_psprintf(ngx_pool_t *p, const char *fmt, ...)
 
 #if AP_PSPRINTF_COMPACT_STRINGS
     if ((int)(e - s) < m / 2) {
-        d = (u_char *) ap_pstrdup(p, (char *) s);
+        u_char *d = (u_char *) ap_pstrdup(p, (char *) s);
         if (NULL != d) {
             ap_pfree(p, s);
             s = d;
@@ -369,16 +422,6 @@ ap_os_escape_path (ngx_pool_t *p, const char *path, int partial)
  * Utilities
  */
 
-#define get_hdr_in(R,H) (R->headers_in.H ? str2charp(R->pool, &R->headers_in.H->value) : NULL)
-
-#define ngx_strcmp_c(ns,cs) ((ns).len == sizeof(cs)-1 && \
-                            ! ngx_strncmp((ns).data, (u_char*)(cs), sizeof(cs)-1))
-#define ngx_strcasecmp_c(ns,cs) ((ns).len == sizeof(cs)-1 && \
-                            ! ngx_strncasecmp((ns).data, (u_char*)(cs), sizeof(cs)-1))
-
-#define ngx_strcmp_eq(ns1,ns2) ((ns1).len == (ns2).len && \
-                            ! ngx_strncmp((ns1).data, (ns2).data, (ns1).len))
-
 static void
 ngx_str_assign_copy (ngx_pool_t *p, ngx_str_t *dst, u_char *src)
 {
@@ -464,7 +507,6 @@ pubcookie_setup_request (ngx_http_request_t *r)
 static ngx_int_t
 pubcookie_finish_request (ngx_http_request_t *r)
 {
-    ngx_pubcookie_srv_t *scfg = ngx_http_get_module_srv_conf(r, ngx_pubcookie_module);
     ngx_pubcookie_req_t *rr = ngx_http_get_module_ctx(r, ngx_pubcookie_module);
     ngx_buf_t *b;
     ngx_chain_t out;
@@ -532,7 +574,6 @@ static u_char *
 get_app_path (ngx_http_request_t * r, u_char *path)
 {
     ngx_pool_t *p = r->pool;
-    ngx_pubcookie_loc_t *cfg = ngx_http_get_module_loc_conf(r, ngx_pubcookie_module);
     ngx_pubcookie_srv_t *scfg = ngx_http_get_module_srv_conf(r, ngx_pubcookie_module);
     u_char *path_out;
     int truncate;
@@ -609,7 +650,6 @@ appid (ngx_http_request_t * r)
 static u_char *
 appsrvid (ngx_http_request_t * r)
 {
-    ngx_pubcookie_loc_t *cfg = ngx_http_get_module_loc_conf(r, ngx_pubcookie_module);
     ngx_pubcookie_srv_t *scfg = ngx_http_get_module_srv_conf(r, ngx_pubcookie_module);
 
     if (scfg->appsrvid.data) {
@@ -836,7 +876,6 @@ set_session_cookie (ngx_http_request_t * r,
 static void
 clear_granting_cookie (ngx_http_request_t * r)
 {
-    ngx_pubcookie_loc_t *cfg = ngx_http_get_module_loc_conf(r, ngx_pubcookie_module);
     ngx_pubcookie_srv_t *scfg = ngx_http_get_module_srv_conf(r, ngx_pubcookie_module);
     char *new_cookie;
 
@@ -1001,7 +1040,6 @@ stop_the_show (ngx_http_request_t *r, ngx_pubcookie_srv_t *scfg,
 static char *
 get_cookie (ngx_http_request_t * r, char *name, int n)
 {
-    ngx_pubcookie_loc_t *cfg = ngx_http_get_module_loc_conf(r, ngx_pubcookie_module);
     ngx_pubcookie_srv_t *scfg = ngx_http_get_module_srv_conf(r, ngx_pubcookie_module);
     ngx_pubcookie_req_t *mrr = ngx_http_get_module_ctx(top_rrec(r), ngx_pubcookie_module);
     ngx_pool_t *p = r->pool;
@@ -1010,7 +1048,6 @@ get_cookie (ngx_http_request_t * r, char *name, int n)
     const char *cookie_header;
     char *chp;
     char *cookie, *ptr;
-    request_rec *mr = top_rrec (r);
     char *name_w_eq;
     int i;
 
@@ -1024,7 +1061,7 @@ get_cookie (ngx_http_request_t * r, char *name, int n)
 
     cph = r->headers_in.cookies.elts;
     cookie_header = NULL;
-    for (i = 0; i < r->headers_in.cookies.nelts; i++, cph++) {    
+    for (i = 0; i < (int) r->headers_in.cookies.nelts; i++, cph++) {    
         if (ngx_strcmp_c((**cph).key, "Cookie")) {
             cookie_header = str2charp(p, &(**cph).value);
             pc_req_log(r, " .. summary Cookie[%s]", cookie_header);
@@ -1082,8 +1119,6 @@ get_cookie (ngx_http_request_t * r, char *name, int n)
 static int
 get_pre_s_from_cookie (ngx_http_request_t * r)
 {
-    ngx_pool_t *p = r->pool;
-    ngx_pubcookie_loc_t *cfg = ngx_http_get_module_loc_conf(r, ngx_pubcookie_module);
     ngx_pubcookie_srv_t *scfg = ngx_http_get_module_srv_conf(r, ngx_pubcookie_module);
 
     pbc_cookie_data *cookie_data = NULL;
@@ -2079,7 +2114,6 @@ get_post_data (ngx_http_request_t * r, int post_len)
     char *bp;
     ngx_int_t rc;
     ngx_chain_t *chain;
-    ngx_buf_t *buf;
     int len;
 
     post_len = r->headers_in.content_length_n;
@@ -2478,7 +2512,6 @@ pubcookie_handle_post_reply (ngx_http_request_t * r)
         while (post_data) {
             if ((a = strchr (post_data, '&'))) *a++ = '\0';
             if (*post_data) {
-                int na;
 
                 if ((v = strchr (post_data, '='))) *v++ = '\0';
                 for (t = v; t&&*t; t++) if (*t == '+') *t = ' ';
@@ -2928,11 +2961,13 @@ pubcookie_post_domain (ngx_conf_t *cf, void *data, void *conf)
     return NGX_CONF_OK;
 }
 
+#define SET_C_LETTER(c,a,b) (*(c)++ = '%', *(c)++ = (a), *(c)++ = (b))
+
 static void
 normalize_id_string (ngx_pool_t *pool, ngx_str_t *dst, ngx_str_t *src)
 {
     register u_char *c;
-    register int i;
+    register ngx_uint_t i;
     c = dst->data = ngx_pnalloc (pool, src->len * 3 + 1);
     for (i = 0; i < src->len; ++i) {
         switch (src->data[i]) {
@@ -3054,7 +3089,7 @@ pubcookie_set_add_request (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     static ngx_str_t ampersand = ngx_string("&");
     ngx_pubcookie_loc_t *cfg = conf;
     ngx_str_t *value = cf->args->elts;
-    int i;
+    ngx_uint_t i;
 
     for (i = 1; i < cf->args->nelts; i++)
         ngx_strcat3(cf->pool, &cfg->addl_requests,
@@ -3069,7 +3104,7 @@ pubcookie_set_accept_realms (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     static ngx_str_t blank = ngx_string(" ");
     ngx_pubcookie_loc_t *cfg = conf;
     ngx_str_t *value = cf->args->elts;
-    int i;
+    ngx_uint_t i;
 
     for (i = 1; i < cf->args->nelts; i++) {
         ngx_strcat3(cf->pool, &cfg->addl_requests,
@@ -3157,7 +3192,7 @@ ngx_pubcookie_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
         cfg->keydirs = prv->keydirs;
     } else if (cfg->keydirs && prv->keydirs) {
         ngx_keyval_t *kv_old = prv->keydirs->elts;
-        int i;
+        ngx_uint_t i;
         for (i = 0; i < prv->keydirs->nelts; i++) {
             ngx_keyval_t *kv_new = ngx_array_push(cfg->keydirs);
             if (! kv_new)
@@ -3304,7 +3339,6 @@ static void
 dump_recs(ngx_http_request_t *r, ngx_pubcookie_loc_t *c, ngx_pubcookie_srv_t *s)
 {
 #if defined(DEBUG_DUMP_RECS)
-    ngx_pool_t *p = r->pool;
     pc_req_log(r, "+--- dump_loc_req ---");
     pc_req_log(r, "| login=%V domain=%V",
             &s->login, &s->enterprise_domain);

@@ -6,6 +6,9 @@
 
 #include "ngx_http_pubcookie.h"
 
+#define pbc_log_activity(p,v,args...) pbc_ngx_log(log_of(p),(v),args);
+#define pbc_vlog_activity(p,v,f,va)   pbc_ngx_log(log_of(p),(v),"libpubcookie: %s",f);
+
 #undef pbc_malloc
 #undef pbc_free
 #undef pbc_strdup
