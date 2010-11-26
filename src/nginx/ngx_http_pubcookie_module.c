@@ -19,7 +19,7 @@
  */
 #define AP_PSPRINTF_COMPACT_STRINGS 0
 
-#undef DEBUG_DUMP_RECS
+#define DEBUG_DUMP_RECS
 
 int pubcookie_super_debug = 0;
 
@@ -829,6 +829,17 @@ dump_recs(ngx_http_request_t *r, ngx_pubcookie_loc_t *c, ngx_pubcookie_srv_t *s)
 #endif /* DEBUG_DUMP_RECS */
 }
 
+static void
+dump_cookie_data(ngx_http_request_t *r, const char *prefix, pbc_cookie_data *cookie_data)
+{
+#if defined(DEBUG_DUMP_RECS)
+    cookie_data_struct *d = &cookie_data->broken;
+    pc_req_log(r, "cookie_data(%s): user=\"%s\" version=\"%s\" appsrvid=\"%s\" appid=\"%s\"",
+            prefix, d->user, d->version, d->appsrvid, d->appid);
+#endif /* DEBUG_DUMP_RECS */
+}
+
+
 /*
  * Configuration helper for libpbc library
  */
@@ -940,6 +951,8 @@ pubcookie_set_hard_exp (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 static char *
 pubcookie_set_login (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
+    return ngx_conf_set_str_slot(cf, cmd, conf);
+#if 0
     ngx_pubcookie_srv_t *scfg = conf;
     ngx_str_t *value = cf->args->elts;
 
@@ -972,6 +985,7 @@ pubcookie_set_login (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_strcat3(cf->pool, &scfg->login, &schema, &host, &path);
 
     return NGX_CONF_OK;
+#endif
 }
 
 /**
@@ -1861,10 +1875,8 @@ get_cookie (ngx_http_request_t * r, char *name, int n)
     cph = r->headers_in.cookies.elts;
     cookie_header = NULL;
     for (i = 0; i < r->headers_in.cookies.nelts; i++, cph++) {    
-        if ((**cph).key.len == sizeof("Cookie")-1
-            && 0 == ngx_strncmp((**cph).key.data, "Cookie", sizeof("Cookie")-1))
-        {
-            cookie_header = str2charp(p, &((**cph).value));
+        if (ngx_strcmp_c((**cph).key, "Cookie")) {
+            cookie_header = str2charp(p, &(**cph).value);
             pc_req_log(r, " .. summary Cookie[%s]", cookie_header);
             break;
         }
@@ -1879,31 +1891,33 @@ get_cookie (ngx_http_request_t * r, char *name, int n)
 
     /* find the one that's pubcookie */
     for (chp=(char*)cookie_header,i=0;i<=n;i++) {
-       if (!(chp = strstr(chp, name_w_eq))) return NULL;
+       if (!(chp = strstr(chp, name_w_eq))) break;
        chp += strlen (name_w_eq);
     }
 
     cookie = ap_pstrdup (p, chp);
+    ap_pfree(p, (char *)cookie_header);
+    ap_pfree(p, name_w_eq);
+    if (NULL == chp)  return NULL;    
 
-    ptr = cookie;
-    while (*ptr) {
-        if (*ptr == ';')
+    /* remove ';' */
+    for (ptr = cookie; *ptr; ptr++) {
+        if (*ptr == ';') {
             *ptr = 0;
-        ptr++;
+            break;
+        }
     }
+    ptr = ap_pstrdup (r->pool, cookie);
+    ngx_pfree(r->pool, cookie);
+    cookie = ptr;
 
     /* cache and blank cookie */
-    ptr = ap_pstrdup (r->pool, cookie);
-    ap_table_set (mrr->notes, name, ptr);
-
+    ap_table_set (mrr->notes, name, cookie);
     if (!scfg->noblank) {
-       for (ptr=chp; *ptr&&*ptr!=';'; ptr++) *ptr = PBC_X_CHAR;
-       ngx_memcpy((**cph).value.data, (u_char *) chp, (**cph).value.len);
-       pc_req_log(r, " .. blanked \"%V\"", &((**cph).value));
+       off_t off = (off_t)((char *)((**cph).value.data) - (char *)cookie_header);
+       for (ptr=chp; *ptr&&*ptr!=';'; ptr++) *(ptr + off) = PBC_X_CHAR;
+       pc_req_log(r, " .. blanked \"%V\"", &(**cph).value);
     }
-
-    ap_pfree(p, name_w_eq);
-    ap_pfree(p, (char *) cookie_header);
 
     if (*cookie) {
         ap_log_rerror (PC_LOG_DEBUG, r, " .. return: %s", cookie);
@@ -1944,6 +1958,7 @@ get_pre_s_from_cookie (ngx_http_request_t * r)
         return (-1);
     }
 
+    dump_cookie_data(r, "get_pre_s_from_cookie", cookie_data);
     return ((*cookie_data).broken.pre_sess_token);
 
 }
@@ -2465,12 +2480,8 @@ pubcookie_user (ngx_http_request_t * r,
 
         if (cookie_data) {
 
+            dump_cookie_data(r, "pubcookie_user.1", cookie_data);
             rr->cookie_data = cookie_data;
-
-            if (ngx_strlen(cookie_data->broken.user) > 16) {
-                pc_req_log(r, "fixing user name");
-                cookie_data->broken.user[3] = 0;
-            }
 
             /* we tell everyone what authentication check we did */
             ngx_str_assign_copy(p, &rr->user_name, cookie_data->broken.user);
@@ -2583,6 +2594,7 @@ pubcookie_user (ngx_http_request_t * r,
 
     } else {
 
+        dump_cookie_data(r, "pubcookie_user.2", cookie_data);
         rr->has_granting = 1;
 
         clear_granting_cookie (r);
