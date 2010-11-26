@@ -524,8 +524,105 @@ pubcookie_finish_request (ngx_http_request_t *r)
 }
 
 /**************************************
- *  Cookies
+ *
+ *           Main stuff
+ *
+ **************************************/
+
+/**
+ * get the post stuff 
+ * @param r reuquest_rec
+ * @return int 
  */
+static void dummy_body_handler (ngx_http_request_t *r) {}
+
+static
+char *get_post_data (request_rec * r, int post_len)
+{
+    char *buffer;
+    char *bp;
+    ngx_int_t rc;
+    ngx_chain_t *chain;
+    int len;
+
+    post_len = r->headers_in.content_length_n;
+    if (post_len <= 0)
+        return ap_pstrdup(r->pool, "");
+
+    r->request_body_in_file_only = 0;
+    r->request_body_in_single_buf = 1;
+    rc = ngx_http_read_client_request_body(r, dummy_body_handler);
+    if (rc >= NGX_HTTP_SPECIAL_RESPONSE) {
+        ngx_http_finalize_request(r, rc);
+        return NULL;
+    }
+
+    if (NULL == (bp = buffer = (char *) ngx_pnalloc (r->pool, post_len + 1))) {
+        ngx_http_finalize_request(r, NGX_HTTP_INTERNAL_SERVER_ERROR);
+        return NULL;
+    }
+
+    for (chain = r->request_body->bufs; NULL != chain; chain = chain->next) {
+        if (chain->buf->in_file) {
+            pc_req_log(r, "ERROR: please increase client_buffer_size");
+            ngx_http_finalize_request(r, NGX_HTTP_INTERNAL_SERVER_ERROR);
+            return NULL;
+        }
+        len = chain->buf->last - chain->buf->pos;
+        if (len > 0) {
+            ngx_memcpy(bp, chain->buf->pos, len);
+            bp += len;
+        }
+    }
+
+    *bp = '\0';
+    return (buffer);
+}
+
+/**
+ * get a random int used to bind the granting cookie and pre-session
+ * @returns random int or -1 for error
+ * but, what do we do about that error?
+ */
+static
+int get_pre_s_token (request_rec * r)
+{
+    int i;
+
+    if ((i = libpbc_random_int(r)) == -1) {
+        pc_req_log (r, "EMERG: get_pre_s_token: OpenSSL error");
+    }
+
+    ap_log_rerror (PC_LOG_DEBUG, r, "get_pre_s_token: token is %d", i);
+    return (i);
+}
+
+/*                                                                            */
+static
+unsigned char *get_app_path (request_rec * r, const char *path)
+{
+    char *path_out;
+    int truncate;
+    pool *p = r->pool;
+    ngx_pubcookie_srv_t *scfg = ngx_http_get_module_srv_conf(r, ngx_pubcookie_module);
+    char *a;
+
+    if (scfg->dirdepth) {
+        if (scfg->dirdepth < ap_count_dirs(path))
+            truncate = scfg->dirdepth;
+        else
+            truncate = ap_count_dirs (path);
+        path_out = ap_palloc(p, strlen (path) + 1);
+        ap_make_dirstr_prefix (path_out, path, truncate);
+    } else {
+        path_out = ap_make_dirstr_parent (p, path);
+    }
+
+    for (a = path_out; *a; a++)
+        if (*a != '/' && !isalnum(*a))
+            *a = '_';
+    return (unsigned char *) path_out;
+}
 
 /*
  * URL encode a base64 (deal with '+')
@@ -549,37 +646,6 @@ fix_base64_for_url (ngx_pool_t *p, char *b64)
        *np++ = '\0';
    } else n64 = b64;
    return (n64);
-}
-
-/*
- * Application features
- */
-static u_char *
-get_app_path (ngx_http_request_t * r, u_char *path)
-{
-    ngx_pool_t *p = r->pool;
-    ngx_pubcookie_srv_t *scfg = ngx_http_get_module_srv_conf(r, ngx_pubcookie_module);
-    u_char *path_out;
-    int truncate;
-    u_char *a;
-
-    if (scfg->dirdepth) {
-        if (scfg->dirdepth < ap_count_dirs(path))
-            truncate = scfg->dirdepth;
-        else
-            truncate = ap_count_dirs(path);
-        path_out = ngx_pnalloc(p, ngx_strlen(path) + 1);
-        ap_make_dirstr_prefix(path_out, path, truncate);
-    } else {
-        path_out = ap_make_dirstr_parent(p, path);
-    }
-
-    for (a = path_out; *a; a++) {
-        if (*a != '/' && !isalnum(*a))
-            *a = '_';
-    }
-
-    return (u_char *) path_out;
 }
 
 /*
@@ -641,22 +707,6 @@ appsrvid (ngx_http_request_t * r)
         /* because of multiple passes through don't use r->hostname() */
         return (u_char *) ap_get_server_name(r);
     }
-}
-
-/**
- * get a random int used to bind the granting cookie and pre-session
- * @returns random int or -1 for error
- * but, what do we do about that error?
- */
-static int
-get_pre_s_token (ngx_http_request_t * r)
-{
-    int i;
-    if ((i = libpbc_random_int(r)) == -1) {
-        pc_req_log (r, "EMERG: get_pre_s_token: OpenSSL error");
-    }
-    pc_req_log (r, "get_pre_s_token: token is %d", i);
-    return (i);
 }
 
 /*
@@ -2083,56 +2133,6 @@ ngx_pubcookie_init(ngx_conf_t *cf)
  *  POST handler
  */
 
-/**
- * get the post stuff 
- * @param r reuquest_rec
- * @return int 
- */
-static void dummy_body_handler (ngx_http_request_t *r) {}
-
-static char *
-get_post_data (ngx_http_request_t * r, int post_len)
-{
-    char *buffer;
-    char *bp;
-    ngx_int_t rc;
-    ngx_chain_t *chain;
-    int len;
-
-    post_len = r->headers_in.content_length_n;
-    if (post_len <= 0)
-        return ap_pstrdup(r->pool, "");
-
-    r->request_body_in_file_only = 0;
-    r->request_body_in_single_buf = 1;
-    rc = ngx_http_read_client_request_body(r, dummy_body_handler);
-    if (rc >= NGX_HTTP_SPECIAL_RESPONSE) {
-        ngx_http_finalize_request(r, rc);
-        return NULL;
-    }
-
-    if (NULL == (bp = buffer = (char *) ngx_pnalloc (r->pool, post_len + 1))) {
-        ngx_http_finalize_request(r, NGX_HTTP_INTERNAL_SERVER_ERROR);
-        return NULL;
-    }
-
-    for (chain = r->request_body->bufs; NULL != chain; chain = chain->next) {
-        if (chain->buf->in_file) {
-            pc_req_log(r, "ERROR: please increase client_buffer_size");
-            ngx_http_finalize_request(r, NGX_HTTP_INTERNAL_SERVER_ERROR);
-            return NULL;
-        }
-        len = chain->buf->last - chain->buf->pos;
-        if (len > 0) {
-            ngx_memcpy(bp, chain->buf->pos, len);
-            bp += len;
-        }
-    }
-
-    *bp = '\0';
-    return (buffer);
-}
-
 /*
  * Encode the args
  */
@@ -2529,8 +2529,11 @@ pubcookie_post_handler (ngx_http_request_t * r)
 
 
 /**************************************
- * Configuration
- */
+ *
+ *          Configuration
+ *
+ **************************************/
+
 
 static char *pubcookie_post_inact_exp (ngx_conf_t *cf, void *data, void *conf);
 static ngx_conf_post_t pubcookie_conf_inact_exp = { pubcookie_post_inact_exp };
