@@ -292,8 +292,8 @@ ap_get_server_port (ngx_http_request_t *r)
     return (port > 0 && port < 65536) ? (int) port : NGX_ERROR;
 }
 
-static u_char *
-ap_make_dirstr_prefix(u_char *d, u_char *s, int n)
+static char *
+ap_make_dirstr_prefix(char *d, const char *s, int n)
 {
     if (n < 1) {
         *d = '/';
@@ -313,22 +313,22 @@ ap_make_dirstr_prefix(u_char *d, u_char *s, int n)
     return (d);
 }
 
-static u_char *
-ap_make_dirstr_parent (ngx_pool_t *p, u_char *s)
+static char *
+ap_make_dirstr_parent (ngx_pool_t *p, const char *s)
 {
-    u_char *d;
+    char *d;
     int l;
 
-    if (!*s) {
-        return ngx_pstrdup(p, &blank_str);
+    if (!s || !*s) {
+        return ap_pstrdup(p, "");
     }
 
-    d = s + ngx_strlen(s) - 1;
+    d = (char *) s + strlen(s) - 1;
     while (d != s && *d != '/')
         d--;
 
     if (*d != '/') {
-        return ngx_pstrdup(p, &blank_str);
+        return ap_pstrdup(p, "");
     }
     l = (d - s) + 1;
     d = ngx_pnalloc(p, l + 1);
@@ -338,7 +338,7 @@ ap_make_dirstr_parent (ngx_pool_t *p, u_char *s)
 }
 
 static int 
-ap_count_dirs (u_char *path)
+ap_count_dirs (const char *path)
 {
     register int x, n;
     for (x = 0, n = 0; path[x]; x++)
@@ -603,7 +603,7 @@ unsigned char *get_app_path (request_rec * r, const char *path)
 {
     char *path_out;
     int truncate;
-    pool *p = r->pool;
+    ngx_pool_t *p = r->pool;
     ngx_pubcookie_srv_t *scfg = ngx_http_get_module_srv_conf(r, ngx_pubcookie_module);
     char *a;
 
@@ -661,7 +661,7 @@ appid (ngx_http_request_t * r)
     ngx_str_t res;
 
     if (NULL == rr->app_path.data) {
-        u_char *main_uri_path = (u_char *) str2charp(r->pool, &(main_rrec(r)->uri));
+        char *main_uri_path = str2charp(r->pool, &(main_rrec(r)->uri));
         rr->app_path.data = get_app_path(r, main_uri_path);
     }
 
