@@ -1,0 +1,12 @@
+--- ./src/http/ngx_http_core_module.c.bak1	2010-11-01 12:36:15.000000000 +0300
++++ ./src/http/ngx_http_core_module.c	2010-11-01 12:52:54.000000000 +0300
+@@ -1245,6 +1245,9 @@ ngx_http_core_try_files_phase(ngx_http_r
+                        "try to use %s: \"%s\" \"%s\"",
+                        test_dir ? "dir" : "file", name, path.data);
+ 
++        if (name[0] == '-' && name[1] == '\0')
++            continue;
++
+         if (tf->lengths == NULL && tf->name.len == 0) {
+ 
+             if (tf->code) {

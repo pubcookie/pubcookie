@@ -1,6 +1,6 @@
 #
-# VITKI
-# RPM spec for Nginx with PubCookie
+# Copyright (C) 2010 VITKI
+# RPM spec for custom Nginx with PubCookie
 #
 
 %define nginx_user      nginx
@@ -14,7 +14,7 @@
 
 #<VITKI>#
 %define vitver  08
-%global rhver   %((head -1 /etc/redhat-release 2>/dev/null || echo 0) | tr -cd 0-9 | cut -c1)
+%define rhver   %((head -1 /etc/redhat-release 2>/dev/null || echo 0) | tr -cd 0-9 | cut -c1)
 %define relver  vitki.%{vitver}%{?dist}%{!?dist:.el%{rhver}}
 %define debug_package %{nil}
 %define _with_progress 1
@@ -66,8 +66,8 @@ Source104:  404.html
 Source31:   masterzen-nginx-upload-progress-module-0.8.1-0.tar.gz
 Source32:   ngx_slowfs_cache-1.5.tar.gz
 Source33:   agentzh-echo-nginx-module-0.34.tar.gz
-Source34:   nginx_http_pubcookie-0.8.53-3.3.4a-0.1-vitki.tar.gz
-Patch31:    nginx-dummy-try-files.patch
+Source34:   nginx_http_pubcookie-0.8.52-3.3.4a-0.1-vitki.tar.gz
+Patch31:    nginx-dummy-try-files-0.8.52.patch
 #</VITKI>#
 
 # removes -Werror in upstream build scripts.  -Werror conflicts with
@@ -233,12 +233,16 @@ fi
 
 
 %changelog
+* Sat Nov 27 2010 Vitki <vitki@vitki.net> - 0.8.52-08
+- Add support for Pubcookie 3.3.4a authentication, module v.0.1
+- Location name of "-" in try_files avoids disk access and causes unconditional jump
+- Feature macros for modules
+
 * Tue Oct 26 2010 Vitki <vitki@vitki.net> - 0.8.52-07
 - Update to Nginx 0.8.52
-- Add the upload_progress module
-- Add the slow_cache module
-- Add the echo module
-- Add support for Pubcookie authentication.
+- Add the upload_progress module v.0.8.1
+- Add the slow_cache module v.1.5
+- Add the echo module v.0.34
 
 * Sun Jun 20 2010 Jeremy Hinegardner <jeremy at hinegardner dot org> - 0.6.39-5
 - fix bug #591543
