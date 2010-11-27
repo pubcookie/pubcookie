@@ -2158,7 +2158,7 @@ int pubcookie_user (request_rec * r, pubcookie_server_rec * scfg,
     if (libpbc_check_version (p, cookie_data) == PBC_FAIL) {
         ap_log_rerror (PC_LOG_INFO, r,
                        "pubcookie_user: wrong version id; module: %d cookie: %d uri: %s",
-                       PBC_VERSION, (*cookie_data).broken.version);
+                       PBC_VERSION, (*cookie_data).broken.version, r->uri /*VITKI*/);
         rr->failed = PBC_BAD_AUTH;
         rr->redir_reason_no = PBC_RR_WRONGVER_CODE;
         return OK;
