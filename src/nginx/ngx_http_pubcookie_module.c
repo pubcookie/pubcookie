@@ -88,7 +88,7 @@ extern ngx_module_t ngx_pubcookie_module;
 
 #define pubcookie_set_realm(r,realm)   add_out_header(r,"WWW-Authenticate",realm,0)
 
-static int ngx_strcat3 (ngx_pool_t *pool, ngx_str_t *res, ngx_str_t *s1, ngx_str_t *s2, ngx_str_t *s3);
+static int ngx_pstrcat3 (ngx_pool_t *pool, ngx_str_t *res, ngx_str_t *s1, ngx_str_t *s2, ngx_str_t *s3);
 
 static char *encode_get_args (ngx_http_request_t *r, char *in, int ec);
 static char *get_post_data (ngx_http_request_t * r, int post_len);
@@ -406,7 +406,7 @@ ap_os_escape_path (ngx_pool_t *p, const char *path, int partial)
  * Utilities
  */
 
-static void
+static inline void
 ngx_str_assign_copy (ngx_pool_t *p, ngx_str_t *dst, u_char *src)
 {
     ngx_str_t tmp;
@@ -417,7 +417,7 @@ ngx_str_assign_copy (ngx_pool_t *p, ngx_str_t *dst, u_char *src)
 }
 
 static int
-ngx_strcat3 (ngx_pool_t *pool, ngx_str_t *res, ngx_str_t *s1, ngx_str_t *s2, ngx_str_t *s3)
+ngx_pstrcat3 (ngx_pool_t *pool, ngx_str_t *res, ngx_str_t *s1, ngx_str_t *s2, ngx_str_t *s3)
 {
     u_char *p;
     int n, n1, n2, n3;
@@ -671,17 +671,17 @@ appid (ngx_http_request_t * r)
         if (cfg->appid.data && cfg->oldappid.data) {
 	        /* Old and new are both set. */
             /* Glue the default, old, and new together. */
-            ngx_strcat3(p, &res, &rr->app_path, &cfg->oldappid, &cfg->appid);
+            ngx_pstrcat3(p, &res, &rr->app_path, &cfg->oldappid, &cfg->appid);
             return res.data;
         } else if (cfg->appid.data) {
             /* Just the new one is set. */
             /* Glue the default and the new one together. */
-            ngx_strcat3(p, &res, &rr->app_path, &cfg->appid, NULL);
+            ngx_pstrcat3(p, &res, &rr->app_path, &cfg->appid, NULL);
             return res.data;
         } else if (cfg->oldappid.data) {
             /* Just the old one is set. */
             /* Glue the default and the old one together. */
-            ngx_strcat3(p, &res, &rr->app_path, &cfg->oldappid, NULL);
+            ngx_pstrcat3(p, &res, &rr->app_path, &cfg->oldappid, NULL);
             return res.data;
         } else {
             /* None were ever set.  Just use the default. */
@@ -2941,7 +2941,7 @@ pubcookie_post_domain (ngx_conf_t *cf, void *data, void *conf)
 
     if (sp->len > 0 && sp->data[0] != '.') {
         static ngx_str_t dot = ngx_string(".");
-        ngx_strcat3(cf->pool, sp, &dot, sp, NULL);
+        ngx_pstrcat3(cf->pool, sp, &dot, sp, NULL);
     }
 
     return NGX_CONF_OK;
@@ -3078,7 +3078,7 @@ pubcookie_set_add_request (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_uint_t i;
 
     for (i = 1; i < cf->args->nelts; i++)
-        ngx_strcat3(cf->pool, &cfg->addl_requests,
+        ngx_pstrcat3(cf->pool, &cfg->addl_requests,
                     &cfg->addl_requests, &ampersand, &value[i]);
 
     return NGX_CONF_OK;
@@ -3093,7 +3093,7 @@ pubcookie_set_accept_realms (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_uint_t i;
 
     for (i = 1; i < cf->args->nelts; i++) {
-        ngx_strcat3(cf->pool, &cfg->addl_requests,
+        ngx_pstrcat3(cf->pool, &cfg->addl_requests,
                     &cfg->addl_requests, &blank, &value[i]);
     }
 
@@ -3148,7 +3148,7 @@ ngx_pubcookie_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
         /* Yes.  Did the parent also have an *old* app ID? */
         if (prv->oldappid.data) {
 	        /* Yes.  Glue them together and store as "old app ID". */
-	        ngx_strcat3(cf->pool, &cfg->oldappid, &prv->oldappid, &prv->appid, NULL);
+	        ngx_pstrcat3(cf->pool, &cfg->oldappid, &prv->oldappid, &prv->appid, NULL);
         } else {
             /* No.  The parent's app ID is now the "old app ID". */
             cfg->oldappid = prv->appid;
@@ -3165,7 +3165,7 @@ ngx_pubcookie_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
     if (prv->addl_requests.data) {
         static ngx_str_t ampersand = ngx_string("&");
         if (cfg->addl_requests.data)
-	        ngx_strcat3(cf->pool, &cfg->addl_requests,
+	        ngx_pstrcat3(cf->pool, &cfg->addl_requests,
 	                    &prv->addl_requests, &ampersand, &cfg->addl_requests);
         else
             cfg->addl_requests = prv->addl_requests;
@@ -3304,7 +3304,7 @@ create_location (ngx_conf_t *cf, const char *loc_name)
     /* create arguments: "location" "=/LOCNAME" */
     str_loc.data = (u_char *) loc_name;
     str_loc.len = strlen(loc_name);
-    ngx_strcat3(cf->pool, &arg_loc, &str_prefix, &str_loc, NULL);
+    ngx_pstrcat3(cf->pool, &arg_loc, &str_prefix, &str_loc, NULL);
     ngx_array_init(&my_args, cf->pool, 2, sizeof(ngx_str_t));
     my_cf.args = &my_args;
     value = my_args.elts;
