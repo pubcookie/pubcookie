@@ -76,7 +76,7 @@ typedef struct
     ngx_flag_t no_clean_creds;
     ngx_int_t use_post;
     ngx_uint_t crypt_alg;
-    ngx_flag_t behind_proxy;
+    ngx_flag_t vitki_behind_proxy;
     ngx_flag_t dummy_super_debug;
 } ngx_pubcookie_srv_t;
 

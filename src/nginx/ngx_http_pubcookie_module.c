@@ -27,9 +27,13 @@
  */
 #define AP_PSPRINTF_COMPACT_STRINGS 0
 
+#define AP_PSPRINTF_SIZE PBC_4K
 
-#define DONE NGX_DONE
-#define OK   NGX_OK
+#define OK       NGX_OK
+#define DONE     NGX_DONE
+#define DECLINED NGX_DECLINED
+
+#define HTTP_UNAUTHORIZED NGX_HTTP_UNAUTHORIZED
 
 #define ME(r) ap_get_server_name(r)
 
@@ -61,6 +65,16 @@
 #define pc_cf_log(c,args...)   pbc_ngx_log((c)->log,PC_LOG_DEBUG,args)
 #define pc_log_log(l,args...)  pbc_ngx_log((l),PC_LOG_DEBUG,args)
 
+typedef ngx_pubcookie_loc_t pubcookie_dir_rec;
+typedef ngx_pubcookie_srv_t pubcookie_server_rec;
+typedef ngx_pubcookie_req_t pubcookie_req_rec;
+typedef ngx_http_request_t request_rec;
+
+typedef struct {
+    const char *name;
+    size_t offset;
+} pbc_param_off_t;
+
 
 /***********************************
  * Globals
@@ -81,38 +95,37 @@ static ngx_str_t blank_str = ngx_string("");
 
 extern ngx_module_t ngx_pubcookie_module;
 
+static pbc_param_off_t pbc_cfg_str_fields[];
+
 
 /***********************************
  * Prototypes
  */
 
 #define pubcookie_set_realm(r,realm)   add_out_header(r,"WWW-Authenticate",realm,0)
+#define flush_headers(r) (0)
 
-static int ngx_pstrcat3 (ngx_pool_t *pool, ngx_str_t *res, ngx_str_t *s1, ngx_str_t *s2, ngx_str_t *s3);
+static u_char *ngx_pstrcat3 (ngx_pool_t *pool, ngx_str_t *res, ngx_str_t *s1, ngx_str_t *s2, ngx_str_t *s3);
 
 static char *encode_get_args (ngx_http_request_t *r, char *in, int ec);
 static char *get_post_data (ngx_http_request_t * r, int post_len);
 
 static ngx_int_t pubcookie_post_handler (ngx_http_request_t *r);
-static ngx_int_t ngx_pubcookie_authz_handler(ngx_http_request_t *r);
+static int pubcookie_authz_hook (request_rec * r);
 
-static void *ngx_pubcookie_create_loc_conf (ngx_conf_t *cf);
-static char *ngx_pubcookie_merge_loc_conf (ngx_conf_t *cf, void *parent, void *child);
-static void *ngx_pubcookie_create_srv_conf (ngx_conf_t *cf);
-static char *ngx_pubcookie_merge_srv_conf (ngx_conf_t *cf, void *parent, void *child);
-
-static ngx_int_t ngx_pubcookie_init (ngx_conf_t *cf);
+static ngx_int_t pubcookie_init (ngx_conf_t *cf);
 
 static char pubcookie_auth_type (ngx_http_request_t * r);
 
-static int pubcookie_user (ngx_http_request_t * r, ngx_pubcookie_loc_t *cfg, ngx_pubcookie_srv_t *scfg, ngx_pubcookie_req_t *rr);
+static int pubcookie_user (request_rec * r, pubcookie_server_rec *scfg, pubcookie_dir_rec *cfg, pubcookie_req_rec *rr);
 static int pubcookie_user_hook (ngx_http_request_t * r);
 
-static void dump_recs(ngx_http_request_t *r, ngx_pubcookie_loc_t *c, ngx_pubcookie_srv_t *s);
-static void dump_cookie_data(ngx_http_request_t *r, const char *prefix, pbc_cookie_data *cookie_data);
+static void dump_recs (request_rec *r, pubcookie_server_rec *s, pubcookie_dir_rec *c);
+static void dump_cookie_data (request_rec *r, const char *prefix, pbc_cookie_data *cookie_data);
 
-const char * libpbc_config_getstring(pool *ptr, const char *name, const char *defval);
+const char *libpbc_config_getstring(pool *ptr, const char *name, const char *defval);
 
+static char *make_session_cookie_name (ngx_pool_t * p, char *cookiename, unsigned char *_appid);
 
 /**************************************
  * Apache/APR compatibility
@@ -123,13 +136,18 @@ const char * libpbc_config_getstring(pool *ptr, const char *name, const char *de
 
 #define ap_pstrdup(p,s) __ap_pstrdup(p,s)
 #define ap_palloc(p,n)  ngx_palloc(p,n)
+#define ap_pcalloc(p,n) ngx_pcalloc(p,n)
+#define ap_pnalloc(p,n) ngx_pnalloc(p,n)
 #define ap_pfree(p,v)   ngx_pfree(p,v)
+
+#define ap_getword_white_nc(p,s) ap_getword_white((p),(const char **)(s))
 
 #define ap_table_add(tbl,hdr,val) add_out_header(r,hdr,val,1)
 
-typedef ngx_http_request_t request_rec;
-typedef ngx_array_t table;
+#define ap_auth_type(r) "?"
 
+typedef ngx_array_t table;
+typedef int apr_port_t;
 
 static table *
 ap_make_table (ngx_pool_t *p, int n)
@@ -169,22 +187,33 @@ ap_table_get (table *t, const char *key)
 }
 
 static char *
+ap_snprintf(char *buf, int size, const char *fmt, ...)
+{
+    char *e;
+    va_list args;
+    va_start(args, fmt);
+    e = (char *) ngx_vsnprintf((u_char *) buf, size, fmt, args);
+    va_end(args);
+    *e = '\0';
+    return e;
+}
+
+static char *
 ap_psprintf(ngx_pool_t *p, const char *fmt, ...)
 {
     u_char *s, *e;
     va_list args;
-    const int m = PBC_4K;
 
-    if (NULL == (s = ngx_pnalloc(p, m)))
+    if (NULL == (s = ngx_pnalloc(p, AP_PSPRINTF_SIZE)))
         return NULL;
 
     va_start(args, fmt);
-    e = ngx_vslprintf(s, s + m - 1, fmt, args);
+    e = ngx_vslprintf(s, s + AP_PSPRINTF_SIZE - 1, fmt, args);
     va_end(args);
     *e = '\0';
 
 #if AP_PSPRINTF_COMPACT_STRINGS
-    if ((int)(e - s) < m / 2) {
+    if ((int)(e - s) < AP_PSPRINTF_SIZE / 2) {
         u_char *d = (u_char *) ap_pstrdup(p, (char *) s);
         if (NULL != d) {
             ap_pfree(p, s);
@@ -232,9 +261,9 @@ ap_rprintf(ngx_http_request_t *r, const char *fmt, ...)
 }
 
 static char *
-ap_getword_white (ngx_pool_t *pool, char **line)
+ap_getword_white (ngx_pool_t *pool, const char **line)
 {
-    char *p = *line;
+    char *p = (char *) *line;
     int len;
     char *res;
 
@@ -416,18 +445,18 @@ ngx_str_assign_copy (ngx_pool_t *p, ngx_str_t *dst, u_char *src)
     dst->len = tmp.len;
 }
 
-static int
+static u_char *
 ngx_pstrcat3 (ngx_pool_t *pool, ngx_str_t *res, ngx_str_t *s1, ngx_str_t *s2, ngx_str_t *s3)
 {
     u_char *p;
     int n, n1, n2, n3;
-    n1 = s1 == NULL || s1->data == NULL ? 0 : s1->len == (size_t)-1 ? ngx_strlen(s1->data) : s1->len;
-    n2 = s2 == NULL || s2->data == NULL ? 0 : s2->len == (size_t)-1 ? ngx_strlen(s2->data) : s2->len;
-    n3 = s3 == NULL || s3->data == NULL ? 0 : s3->len == (size_t)-1 ? ngx_strlen(s3->data) : s3->len;
+    n1 = !s1 || !s1->data ? 0 : s1->len == (size_t)-1 ? ngx_strlen(s1->data) : s1->len;
+    n2 = !s2 || !s2->data ? 0 : s2->len == (size_t)-1 ? ngx_strlen(s2->data) : s2->len;
+    n3 = !s3 || !s3->data ? 0 : s3->len == (size_t)-1 ? ngx_strlen(s3->data) : s3->len;
     n = n1 + n2 + n3 + 1;
     p = ngx_pnalloc(pool, n);
-    if (p == NULL)
-        return NGX_ERROR;
+    if (!p)
+        return NULL;
     if (n1)  ngx_memcpy(p, s1->data, n1);
     if (n2)  ngx_memcpy(p + n1, s2->data, n2);
     if (n3)  ngx_memcpy(p + n1 + n2, s3->data, n3);
@@ -440,7 +469,7 @@ ngx_pstrcat3 (ngx_pool_t *pool, ngx_str_t *res, ngx_str_t *s1, ngx_str_t *s2, ng
         ngx_pfree(pool, s3->data);
     res->data = p;
     res->len = n - 1;
-    return NGX_OK;
+    return res->data;
 }
 
 static char *
@@ -453,7 +482,7 @@ ap_pstrcat3 (ngx_pool_t *pool, const char *s1, const char *s2, const char *s3)
     n3 = s3 ? strlen(s3) : 0;
     n = n1 + n2 + n3 + 1;
     p = ngx_pnalloc(pool, n);
-    if (NULL == p)
+    if (!p)
         return NULL;
     if (n1)  ngx_memcpy(p, s1, n1);
     if (n2)  ngx_memcpy(p + n1, s2, n2);
@@ -465,6 +494,32 @@ ap_pstrcat3 (ngx_pool_t *pool, const char *s1, const char *s2, const char *s3)
 /**************************************
  * Requests
  */
+
+static int
+add_out_header (ngx_http_request_t *r, const char *name, const char *value, int free_value)
+{
+    ngx_table_elt_t *hdr;
+
+    if (NULL == (hdr = ngx_list_push(&r->headers_out.headers))) {
+        pc_req_log(r, "cannot allocate memory for header structure");
+        return NGX_ERROR;
+    }
+    hdr->hash = 1;
+    hdr->key.data = (u_char *) name;
+    hdr->key.len = ngx_strlen((u_char *) name);
+
+    if (NULL == (hdr->value.data = (u_char *) ap_pstrdup(r->pool, (char *) value))) {
+        pc_req_log(r, "cannot allocate memory for header value");
+        return NGX_ERROR;
+    }
+    hdr->value.len = strlen(value);
+
+    pc_req_log(r, "out_header[%s]:\"%s\"", name, value);
+    if (free_value)
+        ap_pfree(r->pool, (void *) value);
+
+    return NGX_OK;
+}
 
 static ngx_pubcookie_req_t *
 pubcookie_setup_request (ngx_http_request_t *r)
@@ -497,7 +552,7 @@ pubcookie_finish_request (ngx_http_request_t *r)
     u_char *msg;
     int len;
 
-    if (NULL == rr || NULL == rr->msg.data)
+    if (!rr || !rr->msg.data)
         return NGX_DECLINED;
 
     msg = rr->msg.data;
@@ -595,6 +650,7 @@ int get_pre_s_token (request_rec * r)
 
     ap_log_rerror (PC_LOG_DEBUG, r, "get_pre_s_token: token is %d", i);
     return (i);
+
 }
 
 /*                                                                            */
@@ -624,131 +680,18 @@ unsigned char *get_app_path (request_rec * r, const char *path)
     return (unsigned char *) path_out;
 }
 
-/*
- * URL encode a base64 (deal with '+')
- */
-static char *
-fix_base64_for_url (ngx_pool_t *p, char *b64)
+static
+int check_end_session (request_rec * r)
 {
-   int n;
-   char *np;
-   char *n64;
-   for (n=0, np=b64; *np; np++) if (*np=='+') n++;
-   if (n>0) {
-       n64 = ngx_pcalloc (p, (strlen (b64) + 4*n));
-       for (np=n64; *b64; b64++) {
-          if (*b64=='+') {
-             *np++ = '%';
-             *np++ = '2';
-             *np++ = 'B';
-          } else *np++ = *b64;
-       }
-       *np++ = '\0';
-   } else n64 = b64;
-   return (n64);
-}
-
-/*
- * figure out the appid
- */
-static u_char *
-appid (ngx_http_request_t * r)
-{
-    ngx_pool_t *p = r->pool;
-    ngx_pubcookie_loc_t *cfg = ngx_http_get_module_loc_conf(r, ngx_pubcookie_module);
-    ngx_pubcookie_srv_t *scfg = ngx_http_get_module_srv_conf(r, ngx_pubcookie_module);
-    ngx_pubcookie_req_t *rr = ngx_http_get_module_ctx(r, ngx_pubcookie_module);
-    ngx_str_t res;
-
-    if (NULL == rr->app_path.data) {
-        char *main_uri_path = str2charp(r->pool, &(main_rrec(r)->uri));
-        rr->app_path.data = get_app_path(r, main_uri_path);
-    }
-
-    /* Added by ddj@cmu.edu on 2006/05/10. */
-    if (scfg->catenate) {	/* Catenate app IDs? */
-        /* Yeah. Anything to catenate? 4 possibilities. */
-        if (cfg->appid.data && cfg->oldappid.data) {
-	        /* Old and new are both set. */
-            /* Glue the default, old, and new together. */
-            ngx_pstrcat3(p, &res, &rr->app_path, &cfg->oldappid, &cfg->appid);
-            return res.data;
-        } else if (cfg->appid.data) {
-            /* Just the new one is set. */
-            /* Glue the default and the new one together. */
-            ngx_pstrcat3(p, &res, &rr->app_path, &cfg->appid, NULL);
-            return res.data;
-        } else if (cfg->oldappid.data) {
-            /* Just the old one is set. */
-            /* Glue the default and the old one together. */
-            ngx_pstrcat3(p, &res, &rr->app_path, &cfg->oldappid, NULL);
-            return res.data;
-        } else {
-            /* None were ever set.  Just use the default. */
-            return rr->app_path.data;
-        }
-    } else {
-        /* No, don't catenate.  Use the 3.3.0a logic verbatim. */
-        return (cfg->appid.data ? cfg->appid.data : rr->app_path.data);
-    }
-}
-
-/*
- * figure out the appsrvid
- */
-static u_char *
-appsrvid (ngx_http_request_t * r)
-{
-    ngx_pubcookie_srv_t *scfg = ngx_http_get_module_srv_conf(r, ngx_pubcookie_module);
-
-    if (scfg->appsrvid.data) {
-        return scfg->appsrvid.data;
-    } else {
-        /* because of multiple passes through don't use r->hostname() */
-        return (u_char *) ap_get_server_name(r);
-    }
-}
-
-/*
- * figure out the session cookie name
- */
-static char *
-make_session_cookie_name (ngx_pool_t * p, char *cookiename, u_char *_appid)
-{
-    /* 
-       we now use JimB style session cookie names
-       session cookie names are PBC_S_COOKIENAME_appid 
-     */
-
-    char *ptr;
-    char *name;
-
-    name = (char *) ngx_pnalloc(p, strlen(cookiename) + strlen((char *)_appid) + 2);
-    strcpy(name, cookiename);
-    strcat(name, "_");
-    strcat(name, (const char *) _appid);
-
-    ptr = name;
-    while (*ptr) {
-        if (*ptr == '/')
-            *ptr = '_';
-        ptr++;
-    }
-
-    return name;
-}
-
-/*
- * ?
- */
-static int
-check_end_session (ngx_http_request_t * r)
-{
-    ngx_pubcookie_loc_t *cfg = ngx_http_get_module_loc_conf(r, ngx_pubcookie_module);
-    ngx_pool_t *p = r->pool;
     int ret = 0;
-    char *end_session = str2charp(p, &cfg->end_session);
+    const char *end_session;
     char *word;
+    ngx_pool_t *p = r->pool;
+    pubcookie_dir_rec *cfg;
+
+    cfg = ngx_http_get_module_loc_conf(r, ngx_pubcookie_module);
+
+    end_session = str2charp(p, &cfg->end_session);
 
     /* check list of end session args */
     while (end_session != NULL && *end_session != '\0' &&
@@ -768,66 +711,102 @@ check_end_session (ngx_http_request_t * r)
     }
 
     return (ret);
+
 }
 
-/*
- * push another cookie to client
- */
-static int
-add_out_header (ngx_http_request_t *r, const char *name, const char *value, int free_value)
+/* converts an authtype name to a pubcookie credential number */
+static
+char pubcookie_auth_type (request_rec * r)
 {
-    ngx_table_elt_t *hdr;
+    static const char * auth_type = "WebISO";
 
-    if (NULL == (hdr = ngx_list_push(&r->headers_out.headers))) {
-        pc_req_log(r, "cannot allocate memory for header structure");
-        return NGX_ERROR;
-    }
-    hdr->hash = 1;
-    hdr->key.data = (u_char *) name;
-    hdr->key.len = ngx_strlen((u_char *) name);
-
-    if (NULL == (hdr->value.data = (u_char *) ap_pstrdup(r->pool, (char *) value))) {
-        pc_req_log(r, "cannot allocate memory for header value");
-        return NGX_ERROR;
-    }
-    hdr->value.len = strlen(value);
-
-    pc_req_log(r, "out_header[%s]:\"%s\"", name, value);
-    if (free_value)
-        ap_pfree(r->pool, (void *) value);
-
-    return NGX_OK;
+    /* ok, check the list in libpubcookie */
+    return libpbc_get_credential_id (r, auth_type);
 }
 
-/*
- * make sure agents don't cache the redirect
- */
-static void
-set_no_cache_headers (ngx_http_request_t * r)
+/* figure out the appid                                                      */
+static
+unsigned char *appid (request_rec * r)
 {
-    ngx_pubcookie_req_t *rr = ngx_http_get_module_ctx(r, ngx_pubcookie_module);
-    if (! rr->no_cache_set) {
-        char buf[32];
-        *( ngx_http_time((u_char *) buf, r->start_sec) ) = '\0';
-        add_out_header (r, "Expires", buf, 0);
-        add_out_header (r, "Cache-Control", "no-store, no-cache, must-revalidate", 0);
-        add_out_header (r, "Pragma", "no-cache", 0);
-        rr->no_cache_set = 1;
-    }
-}
-
-/*
- * set or reset the session cookie.
- * Called from the user hook.
- */
-static void
-set_session_cookie (ngx_http_request_t * r,
-                    ngx_pubcookie_loc_t * cfg, ngx_pubcookie_srv_t * scfg,
-                    ngx_pubcookie_req_t * rr, int firsttime)
-{
+    pubcookie_server_rec *scfg;
+    pubcookie_dir_rec *cfg;
+    request_rec *rmain = main_rrec (r);
     ngx_pool_t *p = r->pool;
+    ngx_str_t res;
+    ngx_pubcookie_req_t *rr = ngx_http_get_module_ctx(r, ngx_pubcookie_module);
+
+    cfg = ngx_http_get_module_loc_conf(r, ngx_pubcookie_module);
+    scfg = ngx_http_get_module_srv_conf(r, ngx_pubcookie_module);
+
+    if (! rr->app_path.data)
+        rr->app_path.data = get_app_path(r, str2charp(p, &rmain->uri));
+
+    /* Added by ddj@cmu.edu on 2006/05/10. */
+    if (scfg->catenate) {	/* Catenate app IDs? */
+        /* Yeah. Anything to catenate? 4 possibilities. */
+        if (cfg->appid.data && cfg->oldappid.data) {
+	    /* Old and new are both set. */
+            /* Glue the default, old, and new together. */
+            return ngx_pstrcat3(p, &res, &rr->app_path, &cfg->oldappid, &cfg->appid);
+        } else if (cfg->appid.data) {
+            /* Just the new one is set. */
+            /* Glue the default and the new one together. */
+            return ngx_pstrcat3(p, &res, &rr->app_path, &cfg->appid, NULL);
+        } else if (cfg->oldappid.data) {
+            /* Just the old one is set. */
+            /* Glue the default and the old one together. */
+            return ngx_pstrcat3(p, &res, &rr->app_path, &cfg->oldappid, NULL);
+        } else {
+            /* None were ever set.  Just use the default. */
+            return rr->app_path.data;
+        }
+    } else {
+        /* No, don't catenate.  Use the 3.3.0a logic verbatim. */
+        return (cfg->appid.data ? cfg->appid.data : rr->app_path.data);
+    }
+}
+
+/* figure out the appsrvid                                                   */
+static
+unsigned char *appsrvid (request_rec * r)
+{
+    pubcookie_server_rec *scfg;
+    scfg = ngx_http_get_module_srv_conf(r, ngx_pubcookie_module);
+
+    if (scfg->appsrvid.data)
+        return (scfg->appsrvid.data);
+    else
+        /* because of multiple passes through don't use r->hostname() */
+        return (unsigned char *) ap_get_server_name(r);
+}
+
+/* make sure agents don't cache the redirect */
+static
+void set_no_cache_headers (request_rec * r)
+{
+    pubcookie_req_rec *rr;
+    char datestr[32];
+    rr = ngx_http_get_module_ctx(r, ngx_pubcookie_module);
+    if (rr->no_cache_set)
+        return;
+    rr->no_cache_set = 1;
+    *( ngx_http_time((u_char *) datestr, r->start_sec) ) = '\0';
+
+    add_out_header (r, "Expires", datestr, 0);
+    add_out_header (r, "Cache-Control", "no-store, no-cache, must-revalidate", 0);
+    add_out_header (r, "Pragma", "no-cache", 0);
+}
+
+/* set or reset the session cookie.
+   Called from the user hook.  */
+static void set_session_cookie (request_rec * r,
+                                pubcookie_server_rec * scfg,
+                                pubcookie_dir_rec * cfg,
+                                pubcookie_req_rec * rr, int firsttime)
+{
     char *new_cookie;
-    u_char *cookie;
+    unsigned char *cookie;
+    ngx_pool_t *p = r->pool;
 
     if (firsttime != 1) {
         /* just update the idle timer */
@@ -841,20 +820,20 @@ set_session_cookie (ngx_http_request_t * r,
         cookie = libpbc_get_cookie (r,
                                     scfg->sectext,
                                     rr->user_full.data,
-                                    (u_char *) PBC_VERSION,
+                                    (unsigned char *) PBC_VERSION,
                                     PBC_COOKIE_TYPE_S,
                                     rr->creds,
                                     (cfg->session_reauth < 0) ? 23 : 24,
-                                    (u_char *) appsrvid(r),
-                                    appid(r),
-                                    ME(r), 0, scfg->crypt_alg);
+                                    (unsigned char *) appsrvid (r),
+                                    appid (r), ME (r), 0, scfg->crypt_alg);
     }
 
     new_cookie = ap_psprintf(p, "%s=%s; path=%s;%s",
                               make_session_cookie_name (p,
                                                         PBC_S_COOKIENAME,
-                                                        (u_char *) appid(r)),
+                                                        appid(r)),
                               cookie, "/", secure_cookie);
+
     ap_table_add (HDRS_OUT, "Set-Cookie", new_cookie);
 
     if (firsttime && rr->cred_transfer.data) {
@@ -867,31 +846,31 @@ set_session_cookie (ngx_http_request_t * r,
            the first time since our cred cookie doesn't expire (which is poor
            and why we need cookie extensions) */
         /* encrypt */
-        if (libpbc_mk_priv (r, scfg->sectext, ME(r), 0, (char *) rr->cred_transfer.data,
+        if (libpbc_mk_priv (r, scfg->sectext, ME (r), 0, (char *) rr->cred_transfer.data,
                             rr->cred_transfer.len, &blob, &bloblen,
                             scfg->crypt_alg)) {
-            pc_req_log(r,
-                           "ERROR: credtrans: libpbc_mk_priv() failed");
+            ap_log_rerror (PC_LOG_ERR, r,
+                           "credtrans: libpbc_mk_priv() failed");
             res = -1;
         }
 
         /* base 64 */
         if (!res) {
-            base64 = ngx_palloc(p, (bloblen + 3) / 3 * 4 + 1);
-            if (!libpbc_base64_encode (r, (u_char *) blob,
-                                       (u_char *) base64,
+            base64 = ap_palloc (p, (bloblen + 3) / 3 * 4 + 1);
+            if (!libpbc_base64_encode (r, (unsigned char *) blob,
+                                       (unsigned char *) base64,
                                        bloblen)) {
-                pc_req_log(r,
-                               "ERROR: credtrans: libpbc_base64_encode() failed");
+                ap_log_rerror (PC_LOG_ERR, r,
+                               "credtrans: libpbc_base64_encode() failed");
                 res = -1;
             }
         }
 
         /* set */
-        new_cookie = ap_psprintf(p, "%s=%s; path=%s;%s",
+        new_cookie = ap_psprintf (p, "%s=%s; path=%s;%s",
                                   make_session_cookie_name (p,
                                                             PBC_CRED_COOKIENAME,
-                                                            appid(r)),
+                                                            appid (r)),
                                   base64, "/", secure_cookie);
         ap_table_add (HDRS_OUT, "Set-Cookie", new_cookie);
 
@@ -899,44 +878,42 @@ set_session_cookie (ngx_http_request_t * r,
            automatically be copied from the granting cookie to the 
            session cookies and from session cookie to session cookie */
     }
-
-    ap_pfree(p, new_cookie);
 }
 
-/*
- * clear granting cookie
- */
-static void
-clear_granting_cookie (ngx_http_request_t * r)
+/** clear granting cookie */
+static
+void clear_granting_cookie (request_rec * r)
 {
-    ngx_pubcookie_srv_t *scfg = ngx_http_get_module_srv_conf(r, ngx_pubcookie_module);
     char *new_cookie;
+    ngx_pool_t *p = r->pool;
+    pubcookie_server_rec *scfg;
+
+    scfg = ngx_http_get_module_srv_conf(r, ngx_pubcookie_module);
 
     if (scfg->use_post)
-        new_cookie = ap_psprintf(r->pool, "%s=; path=/; expires=%s;%s",
+        new_cookie = ap_psprintf (p, "%s=; path=/; expires=%s;%s",
                                   PBC_G_COOKIENAME,
                                   EARLIEST_EVER, secure_cookie);
     else
-        new_cookie = ap_psprintf(r->pool, "%s=; domain=%s; path=/; expires=%s;%s",
+        new_cookie =
+            ap_psprintf (p, "%s=; domain=%s; path=/; expires=%s;%s",
                          PBC_G_COOKIENAME, PBC_ENTRPRS_DOMAIN,
                          EARLIEST_EVER, secure_cookie);
 
-    pc_req_log(r,
-               "clear_granting_cookie: setting cookie: %s",
-               new_cookie);
-
+    ap_log_rerror (PC_LOG_DEBUG, r,
+                   "clear_granting_cookie: setting cookie: %s",
+                   new_cookie);
     ap_table_add (HDRS_OUT, "Set-Cookie", new_cookie);
 }
 
-/*
- * clear cred transfer cookie
- */
-static void
-clear_transfer_cookie (ngx_http_request_t * r)
+/* clear cred transfer cookie */
+static
+void clear_transfer_cookie (request_rec * r)
 {
     char *new_cookie;
+    ngx_pool_t *p = r->pool;
 
-    new_cookie = ap_psprintf(r->pool,
+    new_cookie = ap_psprintf (p,
                               "%s=; domain=%s; path=/; expires=%s;%s",
                               PBC_CRED_TRANSFER_COOKIENAME,
                               PBC_ENTRPRS_DOMAIN,
@@ -948,52 +925,56 @@ clear_transfer_cookie (ngx_http_request_t * r)
 /*
  * clear pre session cookie
  */
-static void
-clear_pre_session_cookie (ngx_http_request_t * r)
+static
+void clear_pre_session_cookie (request_rec * r)
 {
     char *new_cookie;
+    ngx_pool_t *p = r->pool;
 
-    new_cookie = ap_psprintf(r->pool,
+    new_cookie = ap_psprintf (p,
                               "%s=; path=/; expires=%s;%s",
                               PBC_PRE_S_COOKIENAME,
                               EARLIEST_EVER, secure_cookie);
 
     ap_table_add (HDRS_OUT, "Set-Cookie", new_cookie);
+
 }
 
-static int
-clear_session_cookie (ngx_http_request_t * r)
+static
+void clear_session_cookie (request_rec * r)
 {
-    ngx_pubcookie_req_t *rr = ngx_http_get_module_ctx(r, ngx_pubcookie_module);
     char *new_cookie;
+    pubcookie_req_rec *rr;
+    ngx_pool_t *p = r->pool;
 
-    if (NULL == rr)
-        return NGX_OK;
+    rr = ngx_http_get_module_ctx(r, ngx_pubcookie_module);
+    if (!rr)
+        return;
 
-    new_cookie = ap_psprintf(r->pool,
+    new_cookie = ap_psprintf (p,
                               "%s=%s; path=/; expires=%s;%s",
-                              make_session_cookie_name (r->pool,
+                              make_session_cookie_name (p,
                                                         PBC_S_COOKIENAME,
-                                                        appid(r)),
+                                                        appid (r)),
                               PBC_CLEAR_COOKIE, EARLIEST_EVER,
                               secure_cookie);
+
     ap_table_add (HDRS_OUT, "Set-Cookie", new_cookie);
 
-    if (NULL != rr->cred_transfer.data) {
+    if (rr->cred_transfer.data) {
         /* extra cookies (need cookie extensions) */
-        new_cookie = ap_psprintf(r->pool,
+        new_cookie = ap_psprintf (p,
                                   "%s=%s; path=/; expires=%s;%s",
-                                  make_session_cookie_name (r->pool,
+                                  make_session_cookie_name (p,
                                                             PBC_CRED_COOKIENAME,
-                                                            appid(r)),
+                                                            appid (r)),
                                   PBC_CLEAR_COOKIE,
                                   EARLIEST_EVER, secure_cookie);
 
         ap_table_add (HDRS_OUT, "Set-Cookie", new_cookie);
     }
-
-    return NGX_OK;
 }
+
 
 /**
  * process end session redirects
@@ -1002,34 +983,35 @@ clear_session_cookie (ngx_http_request_t * r)
  *
  * Called from the check user hook 
  */
-static int
-do_end_session_redirect (ngx_http_request_t * r,
-                         ngx_pubcookie_loc_t *cfg,
-                         ngx_pubcookie_srv_t *scfg,
-                         ngx_pubcookie_req_t *rr)
+static int do_end_session_redirect (request_rec * r,
+                                    pubcookie_server_rec * scfg,
+                                    pubcookie_dir_rec * cfg)
 {
     char *refresh;
-    pc_req_log(r, "do_end_session_redirect: hello");
+    ngx_pool_t *p = r->pool;
 
-    clear_granting_cookie(r);
-    clear_pre_session_cookie(r);
-    clear_session_cookie(r);
-    set_no_cache_headers(r);
+    ap_log_rerror (PC_LOG_DEBUG, r, "do_end_session_redirect: hello");
 
-    refresh = ap_psprintf(r->pool, "%d;URL=%s?%s=%d&%s=%s&%s=%s",
+
+    clear_granting_cookie (r);
+    clear_pre_session_cookie (r);
+    clear_session_cookie (r);
+    set_no_cache_headers (r);
+
+    flush_headers (r);
+
+    refresh = ap_psprintf (p, "%d;URL=%s?%s=%d&%s=%s&%s=%s",
                            PBC_REFRESH_TIME,
-                           str2charp(r->pool, &scfg->login),
+                           str2charp(p, &scfg->login),
                            PBC_GETVAR_LOGOUT_ACTION,
-                           (check_end_session(r) & PBC_END_SESSION_CLEAR_L
-                            ? LOGOUT_ACTION_CLEAR_L : LOGOUT_ACTION_NOTHING),
-                           PBC_GETVAR_APPID,
-                           appid(r),
-                           PBC_GETVAR_APPSRVID,
-                           appsrvid(r));
-    ap_rprintf(r, redirect_html, refresh);
-    ap_pfree(r->pool, refresh);
+                           (check_end_session (r) & PBC_END_SESSION_CLEAR_L
+                            ? LOGOUT_ACTION_CLEAR_L :
+                            LOGOUT_ACTION_NOTHING), PBC_GETVAR_APPID,
+                           appid (r), PBC_GETVAR_APPSRVID, appsrvid (r));
 
-    return NGX_OK;
+    ap_rprintf (r, redirect_html, refresh);
+    ap_pfree(p, refresh);
+    return (OK);
 }
 
 /**
@@ -1041,193 +1023,84 @@ do_end_session_redirect (ngx_http_request_t * r,
  *
  * Called from the check user hook.
  */
-
-static int
-stop_the_show (ngx_http_request_t *r, ngx_pubcookie_srv_t *scfg,
-               ngx_pubcookie_loc_t *cfg, ngx_pubcookie_req_t *rr)
+static int stop_the_show (request_rec * r, pubcookie_server_rec * scfg,
+                          pubcookie_dir_rec * cfg, pubcookie_req_rec * rr)
 {
-    const char *admin = "postmaster@this.server";
-    const char *msg = rr->stop_message ? rr->stop_message : "";
 
-    pc_req_log(r, "stop_the_show: hello");
+    ap_log_rerror (PC_LOG_DEBUG, r, "stop_the_show: hello");
 
-    clear_granting_cookie(r);
-    clear_pre_session_cookie(r);
-    clear_session_cookie(r);
-    set_no_cache_headers(r);
 
-    ap_rprintf(r, stop_html, admin, msg);
+    clear_granting_cookie (r);
+    clear_pre_session_cookie (r);
+    clear_session_cookie (r);
+    set_no_cache_headers (r);
+
+    flush_headers (r);
+
+    ap_rprintf (r, stop_html, "postmaster@this.server",
+                rr->stop_message ? rr->stop_message : "");
     rr->status = NGX_HTTP_BAD_REQUEST;
+    return (OK);
 
-    return NGX_OK;
 }
 
-/*
- * Since we blank out cookies, they're stashed in the notes table.
- * blank_cookie only stashes in the topmost request's notes table, so
- * that's where we'll look.
- *
- * We don't bother with using the topmost request when playing with the
- * headers because only the pointer is copied, anyway.
- */
-static char *
-get_cookie (ngx_http_request_t * r, char *name, int n)
+/* URL encode a base64 (deal with '+') */
+static char *fix_base64_for_url(ngx_pool_t *p, char *b64)
 {
-    ngx_pubcookie_srv_t *scfg = ngx_http_get_module_srv_conf(r, ngx_pubcookie_module);
-    ngx_pubcookie_req_t *mrr = ngx_http_get_module_ctx(top_rrec(r), ngx_pubcookie_module);
-    ngx_pool_t *p = r->pool;
-    ngx_table_elt_t **cph;
-
-    const char *cookie_header;
-    char *chp;
-    char *cookie, *ptr;
-    char *name_w_eq;
-    int i;
-
-    ap_log_rerror (PC_LOG_DEBUG, r, "get_cookie: %s (%d)", name, n);
-
-    /* get cookies */
-    if ((n==0) && (cookie_header = ap_table_get (mrr->notes, name))&&(*cookie_header)) {
-        ap_log_rerror (PC_LOG_DEBUG, r, " .. by cache: %s", cookie_header);
-        return ap_pstrdup (p, cookie_header);
-    }
-
-    cph = r->headers_in.cookies.elts;
-    cookie_header = NULL;
-    for (i = 0; i < (int) r->headers_in.cookies.nelts; i++, cph++) {    
-        if (ngx_strcmp_c((**cph).key, "Cookie")) {
-            cookie_header = str2charp(p, &(**cph).value);
-            pc_req_log(r, " .. summary Cookie[%s]", cookie_header);
-            break;
-        }
-    }
-    if (NULL == cookie_header) {
-        pc_req_log(r, " .. cookies not found");
-        return (NULL);
-    }
-
-    /* add an equal on the end */
-    name_w_eq = ap_pstrcat3 (p, name, "=", NULL);
-
-    /* find the one that's pubcookie */
-    for (chp=(char*)cookie_header,i=0;i<=n;i++) {
-       if (!(chp = strstr(chp, name_w_eq))) break;
-       chp += strlen (name_w_eq);
-    }
-
-    cookie = ap_pstrdup (p, chp);
-    ap_pfree(p, (char *)cookie_header);
-    ap_pfree(p, name_w_eq);
-    if (NULL == chp)  return NULL;    
-
-    /* remove ';' */
-    for (ptr = cookie; *ptr; ptr++) {
-        if (*ptr == ';') {
-            *ptr = 0;
-            break;
-        }
-    }
-    ptr = ap_pstrdup (r->pool, cookie);
-    ngx_pfree(r->pool, cookie);
-    cookie = ptr;
-
-    /* cache and blank cookie */
-    ap_table_set (mrr->notes, name, cookie);
-    if (!scfg->noblank) {
-       off_t off = (off_t)((char *)((**cph).value.data) - (char *)cookie_header);
-       for (ptr=chp; *ptr&&*ptr!=';'; ptr++) *(ptr + off) = PBC_X_CHAR;
-       pc_req_log(r, " .. blanked \"%V\"", &(**cph).value);
-    }
-
-    if (*cookie) {
-        ap_log_rerror (PC_LOG_DEBUG, r, " .. return: %s", cookie);
-        return cookie;
-    }
-    return (NULL);
+   int n;
+   char *np;
+   char *n64;
+   for (n=0, np=b64; *np; np++) if (*np=='+') n++;
+   if (n>0) {
+       n64 = ap_pcalloc (p, (strlen (b64) + 4*n));
+       for (np=n64; *b64; b64++) {
+          if (*b64=='+') {
+             *np++ = '%';
+             *np++ = '2';
+             *np++ = 'B';
+          } else *np++ = *b64;
+       }
+       *np++ = '\0';
+   } else n64 = b64;
+   return (n64);
 }
 
-/*
- * ?
- */
-static int
-get_pre_s_from_cookie (ngx_http_request_t * r)
-{
-    ngx_pubcookie_srv_t *scfg = ngx_http_get_module_srv_conf(r, ngx_pubcookie_module);
-
-    pbc_cookie_data *cookie_data = NULL;
-    char *cookie = NULL;
-    int ccnt = 0;
-
-    pc_req_log(r, "retrieving a pre-session cookie");
-    while (NULL != (cookie = get_cookie (r, PBC_PRE_S_COOKIENAME, ccnt))) {
-        cookie_data = libpbc_unbundle_cookie (r, scfg->sectext,
-                                              cookie, ME(r), 0,
-                                              scfg->crypt_alg);
-        if (cookie_data) break;
-        pc_req_log(r,
-                       "INFO: get_pre_s_from_cookie: can't unbundle pre_s cookie uri: %V\n",
-                       &r->uri);
-        ccnt++;
-    }
-    if (!cookie_data) {
-        pc_req_log(r,
-                       "INFO: get_pre_s_from_cookie: no pre_s cookie, uri: %V\n",
-                       &r->uri);
-        return (-1);
-    }
-
-    dump_cookie_data(r, "get_pre_s_from_cookie", cookie_data);
-    return ((*cookie_data).broken.pre_sess_token);
-
-}
-
-/***************************************************************************
- * Handle the post-method reply from the login server.
- *  Activated by:
- *      <Location /PubCookie.reply>
- *        SetHandler pubcookie-post-reply
- *      </Location>
- */
-
-/*
- * Herein we deal with the redirect of the request to the login server
- * if it was only that simple ...
- */
-static int
-auth_failed_handler (ngx_http_request_t * r,
-                     ngx_pubcookie_loc_t *cfg,
-                     ngx_pubcookie_srv_t *scfg,
-                     ngx_pubcookie_req_t *rr)
+/* Herein we deal with the redirect of the request to the login server        */
+/*    if it was only that simple ...                                          */
+static int auth_failed_handler (request_rec * r,
+                                pubcookie_server_rec * scfg,
+                                pubcookie_dir_rec * cfg,
+                                pubcookie_req_rec * rr)
 {
     ngx_pool_t *p = r->pool;
     char *refresh = NULL;
-    char *pre_s;
-    char *pre_s_cookie;
-    char *g_req_cookie;
+    char *pre_s = NULL;
+    char *pre_s_cookie = NULL;
+    char *g_req_cookie = NULL;
     char *g_req_contents = NULL;
-    int g_req_contents_len;
     char *e_g_req_contents = NULL;
-    const char *tenc = get_hdr_in(r,transfer_encoding);
-    const char *ctype = get_hdr_in(r,content_type);
-    const char *lenp = get_hdr_in(r,content_length);
+    const char *tenc = get_hdr_in (r, transfer_encoding);
+    const char *ctype = get_hdr_in (r, content_type);
+    const char *lenp = get_hdr_in (r, content_length);
     char *host = NULL;
     char *args;
     char *refresh_e;
-    ngx_http_request_t *mr = top_rrec(r);
+    request_rec *mr = top_rrec (r);
     char misc_flag = '0';
     char *file_to_upld = NULL;
     const char *referer;
     int pre_sess_tok;
-    int port;
+    apr_port_t port;
     char *post_data;
     char vstr[4];
     char *b64uri;
 
-    pc_req_log(r, "auth_failed_handler: hello");
+    ap_log_rerror (PC_LOG_DEBUG, r, "auth_failed_handler: hello");
 
     if (r->main != r) {
-        pc_req_log(r, " .. in subrequest: retuning noauth");
-        return (NGX_HTTP_UNAUTHORIZED);
+        ap_log_rerror (PC_LOG_DEBUG, r,
+                       " .. in subrequest: retuning noauth");
+        return (HTTP_UNAUTHORIZED);
     }
 
     if (cfg->noprompt > 0)
@@ -1241,47 +1114,51 @@ auth_failed_handler (ngx_http_request_t * r,
         char *argst;
         /* error out if length of GET args would cause a problem */
         if (r->args.len > PBC_MAX_GET_ARGS) {
-            rr->stop_message = ap_psprintf(p,
+            rr->stop_message =
+                ap_psprintf (p,
                              "GET arguments longer than supported.  (args length: %d)",
                              r->args.len);
             stop_the_show (r, scfg, cfg, rr);
-            return (NGX_OK);
+            return (OK);
         }
 
-        argst = ngx_pcalloc (p, (r->args.len + 3) / 3 * 4 + 1);
-        libpbc_base64_encode (r, r->args.data, (u_char *) argst, r->args.len);
-        pc_req_log(r,
-                       "GET args before encoding length %d, string: %s",
-                       r->args.len, r->args.data);
+        argst = ap_pcalloc (p, (r->args.len + 3) / 3 * 4 + 1);
+        libpbc_base64_encode (r, r->args.data,
+                              (unsigned char *) argst, r->args.len);
+        ap_log_rerror (PC_LOG_DEBUG, r,
+                       "GET args before encoding length %d, string: %V",
+                       r->args.len, &r->args);
         args = fix_base64_for_url(p, argst);
-        pc_req_log(r,
+        ap_log_rerror (PC_LOG_DEBUG, r,
                        "GET args after encoding length %d, string: %s",
                        strlen (args), args);
-    } else {
-        args = "";
-    }
+    } else
+        args = ap_pstrdup (p, "");
 
     r->headers_out.content_type = pbc_content_type;
     r->headers_out.content_type_len = pbc_content_type.len;
-
     /* if there is a non-standard port number just tack it onto the hostname  */
     /* the login server just passes it through and the redirect works         */
     port = ap_get_server_port (r);
-    if (port != 80 && port != 443 && !scfg->behind_proxy) {
+    if ((port != 80) && (port != 443) && !scfg->vitki_behind_proxy) {
         /* because of multiple passes through don't use r->hostname() */
-        host = ap_psprintf(p, "%s:%d", ap_get_server_name(r), port);
+        host = ap_psprintf (p, "%s:%d", ap_get_server_name (r), port);
     }
+    if (!host)
+        /* because of multiple passes through on www don't use r->hostname() */
+        host = ap_get_server_name (r);
 
     /* To knit the referer history together */
     referer = get_hdr_in(r, referer);
-    if (NULL == referer)
-        referer = "";
+    if (!referer)  referer = "";
 
     if ((pre_sess_tok = get_pre_s_token (r)) == -1) {
         /* this is weird since we're already in a handler */
-        rr->stop_message = "Couldn't get pre session token. (Already in handler)";
+        rr->stop_message =
+            ap_pstrdup (p,
+                        "Couldn't get pre session token. (Already in handler)");
         stop_the_show (r, scfg, cfg, rr);
-        return (NGX_OK);
+        return (OK);
     }
 
     /* make the granting request */
@@ -1295,19 +1172,16 @@ auth_failed_handler (ngx_http_request_t * r,
              scfg->crypt_alg == 'd' ? '\0' : scfg->crypt_alg);
 
     if (scfg->use_post) {
-        b64uri = ngx_pcalloc (p, (mr->uri.len + 3) / 3 * 4 + 1);
+        b64uri = ap_pcalloc (p, (mr->uri.len + 3) / 3 * 4 + 1);
         libpbc_base64_encode (r, mr->uri.data,
-                              (u_char *) b64uri, mr->uri.len);
-        pc_req_log (r,
+                              (unsigned char *) b64uri, mr->uri.len);
+        ap_log_rerror (PC_LOG_DEBUG, r,
                        "Post URI before encoding length %d, string: %V",
                        mr->uri.len, &mr->uri);
-        pc_req_log (r,
+        ap_log_rerror (PC_LOG_DEBUG, r,
                        "Post URI after encoding length %d, string: %s",
                        strlen (b64uri), b64uri);
-    } else {
-        b64uri = str2charp(p, &mr->uri);
-        pc_req_log(r, "b64uri(GET):(%s)", b64uri);
-    }
+    } else b64uri = str2charp(p, &mr->uri);
 
     g_req_contents = ap_psprintf (p,
                  "%s=%s&%s=%s&%s=%c&%s=%s&%s=%s&%s=%s&%s=%s&%s=%s&%s=%s&%s=%d&%s=%s&%s=%s&%s=%d&%s=%d&%s=%c",
@@ -1336,30 +1210,28 @@ auth_failed_handler (ngx_http_request_t * r,
                  PBC_GETVAR_REFERER,
                  referer,
                  PBC_GETVAR_SESSION_REAUTH,
-                 (cfg->session_reauth == PBC_UNSET_SESSION_REAUTH ? PBC_SESSION_REAUTH_NO : cfg->session_reauth),
+                 (cfg->session_reauth == PBC_UNSET_SESSION_REAUTH ?
+                  PBC_SESSION_REAUTH_NO : cfg->session_reauth),
                  PBC_GETVAR_PRE_SESS_TOK,
-                 pre_sess_tok,
-                 PBC_GETVAR_FLAG, misc_flag);
+                 pre_sess_tok, PBC_GETVAR_FLAG, misc_flag);
 
-    g_req_contents_len = strlen(g_req_contents);
-
-    if (NULL != cfg->addl_requests.data && cfg->addl_requests.len > 0) {
-        pc_req_log (r,
+    if (cfg->addl_requests.data && cfg->addl_requests.len > 0) {
+        ap_log_rerror (PC_LOG_DEBUG, r,
                        "auth_failed_handler: adding %V",
                        &cfg->addl_requests);
-        
-        ngx_memcpy((u_char *) g_req_contents + g_req_contents_len,
-                    cfg->addl_requests.data, cfg->addl_requests.len);
-        g_req_contents[g_req_contents_len += cfg->addl_requests.len] = '\0';
+
+        g_req_contents = ap_pstrcat3 (p, g_req_contents,        /* FIXME: memory overhead */
+                                     str2charp(p, &cfg->addl_requests), NULL);
     }
 
-    pc_req_log (r,
+    ap_log_rerror (PC_LOG_DEBUG, r,
                    "g_req before encoding length %d, string: %s",
-                   g_req_contents_len, g_req_contents);
+                   strlen (g_req_contents), g_req_contents);
 
     /* setup the client pull */
-    refresh = ap_psprintf (p, "%d;URL=%V",
-                    PBC_REFRESH_TIME, &scfg->login);
+    refresh = ap_psprintf (p, "%d;URL=%V", PBC_REFRESH_TIME,
+                            &scfg->login);
+
 
     /* the redirect for requests with POST args are  */
     /* different then reqs with only GET args        */
@@ -1375,18 +1247,15 @@ auth_failed_handler (ngx_http_request_t * r,
     /*   the body of the redirect                    */
 
     e_g_req_contents =
-        ngx_pcalloc (p, (g_req_contents_len + 3) / 3 * 4 + 1);
-    libpbc_base64_encode (r, (u_char *) g_req_contents,
-                          (u_char *) e_g_req_contents,
-                          g_req_contents_len);
-
-    ap_pfree(p, g_req_contents);
-    g_req_contents = NULL;
-
+        ap_palloc (p, (strlen (g_req_contents) + 3) / 3 * 4 + 1);
+    libpbc_base64_encode (r, (unsigned char *) g_req_contents,
+                          (unsigned char *) e_g_req_contents,
+                          strlen (g_req_contents));
+    ap_pfree(p, g_req_contents); g_req_contents = NULL;
     /* The GET method requires a pre-session cookie */
 
     if (!scfg->use_post) {
-        pc_req_log (r, "making a pre-session cookie");
+        ap_log_rerror (PC_LOG_DEBUG, r, "making a pre-session ckookie");
         pre_s = (char *) libpbc_get_cookie (r,
                                             scfg->sectext,
                                             (unsigned char *) "presesuser",
@@ -1395,15 +1264,10 @@ auth_failed_handler (ngx_http_request_t * r,
                                             PBC_CREDS_NONE,
                                             pre_sess_tok,
                                             (unsigned char *) appsrvid (r),
-                                            appid(r), ME(r), 0,
+                                            appid (r), ME (r), 0,
                                             scfg->crypt_alg);
-        if (NULL == pre_s) {
-            rr->stop_message = "Failure making pre-session cookie";
-            stop_the_show(r, scfg, cfg, rr);
-            goto END;
-        }
-
-        pre_s_cookie = ap_psprintf(p,
+        if (!pre_s) { rr->stop_message = ap_pstrdup (p, "Failure making pre-session cookie"); stop_the_show (r, scfg, cfg, rr); goto END; }
+        pre_s_cookie = ap_psprintf (p,
                                     "%s=%s; path=%s;%s",
                                     PBC_PRE_S_COOKIENAME,
                                     pre_s, "/", secure_cookie);
@@ -1419,7 +1283,8 @@ auth_failed_handler (ngx_http_request_t * r,
     if (ctype
         && !strncmp (ctype, "multipart/form-data",
                      sizeof("multipart/form-data")-1)) {
-        rr->stop_message = "multipart/form-data not allowed";
+        rr->stop_message =
+            ap_pstrdup (p, "multipart/form-data not allowed");
         stop_the_show (r, scfg, cfg, rr);
         goto END;
     }
@@ -1429,16 +1294,19 @@ auth_failed_handler (ngx_http_request_t * r,
 
     post_data = "";
     if (r->headers_in.content_length_n > 0) {
-        int post_data_len = r->headers_in.content_length_n;
-        if (post_data_len > MAX_POST_DATA ||
-            NULL == (post_data = get_post_data (r, post_data_len))) {
-            rr->stop_message = ap_psprintf(p,
+        int post_data_len;
+        if ((post_data_len = r->headers_in.content_length_n) <= 0 ||
+            post_data_len > MAX_POST_DATA ||
+            (!(post_data = get_post_data (r, post_data_len)))) {
+            rr->stop_message =
+                ap_psprintf (p,
                              "Invalid POST data. (POST data length: %d)",
                              post_data_len);
             stop_the_show (r, scfg, cfg, rr);
             goto END;
         }
     }
+
 
     if (!scfg->use_post) {
         /* GET method puts granting request in a cookie */
@@ -1447,11 +1315,10 @@ auth_failed_handler (ngx_http_request_t * r,
                      PBC_G_REQ_COOKIENAME,
                      e_g_req_contents, PBC_ENTRPRS_DOMAIN, secure_cookie);
 
-        pc_req_log (r,
+        ap_log_rerror (PC_LOG_DEBUG, r,
                        "g_req length %d cookie: %s", strlen (g_req_cookie),
                        g_req_cookie);
         ap_table_add (HDRS_OUT, "Set-Cookie", g_req_cookie);
-
 
 #ifdef REDIRECT_IN_HEADER
         if (!(tenc || lenp)) {
@@ -1460,125 +1327,485 @@ auth_failed_handler (ngx_http_request_t * r,
             ap_table_add (HDRS_OUT, "Refresh", refresh_e);
         }
 #endif
+
     }
+
+    flush_headers (r);
 
     /* If we're using the post method, just bundle everything
        in a post to the login server. */
 
     if (scfg->use_post) {
-        u_char cp[12];
-        if ((port == 80 || port == 443) && !scfg->behind_proxy)
-            *cp = '\0';
+        char cp[24];
+        if ((port == 80 || port == 443) && !scfg->vitki_behind_proxy)
+            cp[0] = '\0';
         else
-            ngx_sprintf (cp, ":%d%Z", port);
-
-        ap_rprintf(r, post_request_html,
-                    str2charp(p, &scfg->login),
-                    e_g_req_contents,
-                    encode_get_args(r, post_data, 1),
-                    ap_get_server_name(r),
-                    cp,
-                    str2charp(p, &scfg->post_url) + 1 /* skip first slash */
-                    );
+            ngx_sprintf ((u_char *) cp, ":%d%Z", port);
+        ap_rprintf(r, post_request_html, str2charp(p, &scfg->login),
+                    e_g_req_contents, encode_get_args(r, post_data, 1),
+                    ap_get_server_name (r), cp, str2charp(p, &scfg->post_url) + 1 /* skip first slash */);
 
     } else if (ctype && (tenc || lenp || r->method == NGX_HTTP_POST)) {
-        ap_rprintf(r, get_post_request_html,
-                    str2charp(p, &scfg->login),
-                    encode_get_args(r, post_data, 1),
-                    str2charp(p, &scfg->login),
-                    PBC_WEBISO_LOGO,
+
+        ap_rprintf (r, get_post_request_html, str2charp(p, &scfg->login),
+                    encode_get_args(r, post_data, 1), str2charp(p, &scfg->login), PBC_WEBISO_LOGO,
                     PBC_POST_NO_JS_BUTTON);
 
     } else {
 #ifdef REDIRECT_IN_HEADER
 /* warning, this will break some browsers */
-        ap_rprintf(r, nullpage_html);
+        ap_rprintf (r, nullpage_html);
 #else
-        ap_rprintf(r, redirect_html, refresh);
+        ap_rprintf (r, redirect_html, refresh);
 #endif
     }
 
-    pc_req_log (r,
+    ap_log_rerror (PC_LOG_DEBUG, r,
                    "auth_failed_handler: redirect sent. uri: %V reason: %d",
                    &mr->uri, rr->redir_reason_no);
 
     /* workaround for nginx problems with KeepAlive during redirections. */
     r->keepalive = 0;
-
 END:
-    if (NULL != refresh)
-        ap_pfree(p, refresh);
-    if (NULL != g_req_contents)
-        ap_pfree(p, g_req_contents);
-    if (NULL != e_g_req_contents)
-        ap_pfree(p, e_g_req_contents);
+    if (refresh)  ap_pfree(p, refresh);
+    if (g_req_contents)  ap_pfree(p, g_req_contents);
+    if (e_g_req_contents)  ap_pfree(p, e_g_req_contents);
 
     return (OK);
 }
 
-/**************************************
- *  User authentication
- */
-
-static int
-pubcookie_user_hook (ngx_http_request_t * r)
+/* figure out the session cookie name                                         */
+static char *make_session_cookie_name (ngx_pool_t * p, char *cookiename,
+                                unsigned char *_appid)
 {
-    ngx_pubcookie_loc_t *cfg = ngx_http_get_module_loc_conf(r, ngx_pubcookie_module);
-    ngx_pubcookie_srv_t *scfg = ngx_http_get_module_srv_conf(r, ngx_pubcookie_module);
-    ngx_pubcookie_req_t *rr = ngx_http_get_module_ctx(r, ngx_pubcookie_module);
+    /* 
+       we now use JimB style session cookie names
+       session cookie names are PBC_S_COOKIENAME_appid 
+     */
 
+    char *ptr;
+    char *name;
+
+    name = ap_pstrcat3 (p, cookiename, "_", (const char *) _appid);
+
+    ptr = name;
+    while (*ptr) {
+        if (*ptr == '/')
+            *ptr = '_';
+        ptr++;
+    }
+
+    return name;
+}
+
+/*
+ * Since we blank out cookies, they're stashed in the notes table.
+ * blank_cookie only stashes in the topmost request's notes table, so
+ * that's where we'll look.
+ *
+ * We don't bother with using the topmost request when playing with the
+ * headers because only the pointer is copied, anyway.
+ */
+static
+char *get_cookie (request_rec * r, char *name, int n)
+{
+    const char *cookie_header;
+    char *chp;
+    char *cookie, *ptr;
+    ngx_pubcookie_req_t *mr = ngx_http_get_module_ctx(top_rrec(r), ngx_pubcookie_module);
+    char *name_w_eq;
+    ngx_pool_t *p = r->pool;
+    ngx_pubcookie_srv_t *scfg;
+    int i;
+
+    ngx_table_elt_t **cph;
+    scfg = ngx_http_get_module_srv_conf(r, ngx_pubcookie_module);
+
+
+
+    ap_log_rerror (PC_LOG_DEBUG, r, "get_cookie: %s (%d)", name, n);
+
+    /* get cookies */
+    if ((n==0) && (cookie_header = ap_table_get (mr->notes, name))&&(*cookie_header)) {
+        ap_log_rerror (PC_LOG_DEBUG, r, " .. by cache: %s", cookie_header);
+        return ap_pstrdup (p, cookie_header);
+    }
+
+    cph = r->headers_in.cookies.elts;
+    cookie_header = NULL;
+    for (i = 0; i < (int) r->headers_in.cookies.nelts; i++, cph++) {    
+        if (ngx_strcmp_c((**cph).key, "Cookie")) {
+            cookie_header = str2charp(p, &(**cph).value);
+            pc_req_log(r, " .. summary Cookie[%s]", cookie_header);
+            break;
+        }
+    }
+    if (!cookie_header)
+        return NULL;
+
+    /* add an equal on the end */
+    name_w_eq = ap_pstrcat3 (p, name, "=", NULL);
+
+    /* find the one that's pubcookie */
+    for (chp=(char*)cookie_header,i=0;i<=n;i++) {
+       if (!(chp = strstr(chp, name_w_eq))) break;
+       chp += strlen (name_w_eq);
+    }
+
+    cookie = ap_pstrdup (p, chp);
+    ap_pfree(p, (char *)cookie_header);
+    ap_pfree(p, name_w_eq);
+    if (NULL == chp)  return NULL;    
+
+    /* remove ';' */
+    for (ptr = cookie; *ptr; ptr++) {
+        if (*ptr == ';') {
+            *ptr = 0;
+            break;
+        }
+    }
+    ptr = ap_pstrdup (r->pool, cookie);
+    ngx_pfree(r->pool, cookie);
+    cookie = ptr;
+
+    /* cache and blank cookie */
+    ap_table_set (mr->notes, name, cookie);
+    if (!scfg->noblank) {
+       off_t off = (off_t)((char *)((**cph).value.data) - (char *)cookie_header);
+       for (ptr=chp; *ptr&&*ptr!=';'; ptr++) *(ptr + off) = PBC_X_CHAR;
+       pc_req_log(r, " .. blanked \"%V\"", &(**cph).value);
+    }
+
+    if (*cookie) {
+        ap_log_rerror (PC_LOG_DEBUG, r, " .. return: %s", cookie);
+        return cookie;
+    }
+    return (NULL);
+
+}
+
+/* Initialize after config file commands have been processed */
+
+static ngx_int_t pubcookie_init (ngx_conf_t *cf)
+{
+    ngx_http_handler_pt        *h;
+    ngx_http_core_main_conf_t  *core_cf;
+
+    core_cf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
+
+    if (NULL == (h = ngx_array_push(&core_cf->phases[NGX_HTTP_ACCESS_PHASE].handlers)))
+        return NGX_ERROR;
+    *h = pubcookie_authz_hook;
+
+    return NGX_OK;
+}
+
+/*                                                                            */
+static void *pubcookie_server_create (ngx_conf_t *cf)
+{
+    ngx_pubcookie_srv_t  *scfg;
+
+    if (NULL == (scfg = ngx_pcalloc(cf->pool, sizeof(ngx_pubcookie_srv_t))))
+        return NULL;
+
+    scfg->signature = PBC_SRV_SIGNATURE;
+    scfg->log = cf->log;
+    scfg->pool = cf->pool;
+
+    scfg->dirdepth = NGX_CONF_UNSET;
+    scfg->noblank = NGX_CONF_UNSET;
+    scfg->catenate = NGX_CONF_UNSET;
+    scfg->no_clean_creds = NGX_CONF_UNSET;
+    scfg->use_post = NGX_CONF_UNSET;
+    scfg->vitki_behind_proxy = NGX_CONF_UNSET;
+
+    scfg->crypt_alg = NGX_CONF_UNSET_UINT;
+    scfg->dummy_super_debug = NGX_CONF_UNSET;
+
+    return (void *) scfg;
+}
+
+/*                                                                            */
+static void *pubcookie_dir_create (ngx_conf_t *cf)
+{
+    ngx_pubcookie_loc_t *cfg;
+
+    if (NULL == (cfg = ngx_pcalloc(cf->pool, sizeof(ngx_pubcookie_loc_t))))
+        return NULL;
+    cfg->signature = PBC_LOC_SIGNATURE;
+
+    cfg->inact_exp = NGX_CONF_UNSET;
+    cfg->hard_exp = NGX_CONF_UNSET;
+    cfg->non_ssl_ok = NGX_CONF_UNSET;
+    cfg->session_reauth = NGX_CONF_UNSET;
+    cfg->strip_realm = NGX_CONF_UNSET;
+    cfg->noprompt = NGX_CONF_UNSET;
+
+    return (void *) cfg;
+}
+
+/*                                                                            */
+static char *pubcookie_server_merge (ngx_conf_t *cf, void *parent, void *child)
+{
+    ngx_pubcookie_srv_t *sprv = parent;
+    ngx_pubcookie_srv_t *scfg = child;
+    int i;
+
+    ngx_conf_merge_value(scfg->dirdepth, sprv->dirdepth, PBC_DEFAULT_DIRDEPTH);
+    ngx_conf_merge_value(scfg->noblank, sprv->noblank, 0);
+    ngx_conf_merge_value(scfg->catenate, sprv->catenate, 0);
+    ngx_conf_merge_value(scfg->no_clean_creds, sprv->no_clean_creds, 0);
+    ngx_conf_merge_value(scfg->use_post, sprv->use_post, 0);
+    ngx_conf_merge_uint_value(scfg->crypt_alg, sprv->crypt_alg, PBC_DEF_CRYPT);
+    ngx_conf_merge_value(scfg->vitki_behind_proxy, sprv->vitki_behind_proxy, 0);
+
+    for (i = 0; pbc_cfg_str_fields[i].name != NULL; i++) {
+        int off = pbc_cfg_str_fields[i].offset;
+        ngx_str_t *ps = (ngx_str_t *)((char *) sprv + off);
+        ngx_str_t *cs = (ngx_str_t *)((char *) scfg + off);
+        if (NULL == cs->data)
+            *cs = *ps;
+    }
+
+    if (0 == scfg->locations)
+        return NGX_CONF_OK;
+
+    if (scfg->use_post && NULL == scfg->post_url.data)
+        return "pubcookie_post: post reply location e.g. /PubCookie.reply must be set!";
+
+    if (NULL == scfg->ssl_key_file.data)
+        return "pubcookie_session_key_file: configuration directive must be set!";
+    if (NULL == scfg->ssl_cert_file.data)
+        return "pubcookie_session_cert_file: configuration directive must be set!";
+    if (NULL == scfg->granting_cert_file.data)
+        return "pubcookie_granting_cert_file: configuration directive must be set!";
+    if (NULL == scfg->keydir.data)
+        return "pubcookie_key_dir: configuration directive must be set!";
+    if (NULL == scfg->login.data)
+        return "pubcookie_login: configuration directive must be set!";
+
+    if (libpbc_pubcookie_init((pool *) scfg, &scfg->sectext) != PBC_OK)
+        return "pubcookie_init: libpbc_pubcookie_init failed.";
+    pc_cf_log(cf, "pubcookie_init: libpbc init done");
+
+    return NGX_CONF_OK;
+}
+
+/*                                                                            */
+static char *pubcookie_dir_merge (ngx_conf_t *cf, void *parent, void *child)
+{
+    ngx_pubcookie_loc_t  *prv = parent;
+    ngx_pubcookie_loc_t  *cfg = child;
+
+    ngx_conf_merge_value(cfg->inact_exp, prv->inact_exp, PBC_DEFAULT_INACT_EXPIRE);
+    ngx_conf_merge_value(cfg->hard_exp, prv->hard_exp, PBC_DEFAULT_HARD_EXPIRE);
+    ngx_conf_merge_value(cfg->non_ssl_ok, prv->non_ssl_ok, 0);
+    ngx_conf_merge_value(cfg->session_reauth, prv->session_reauth, 0);
+    ngx_conf_merge_value(cfg->strip_realm, prv->strip_realm, 0);
+    ngx_conf_merge_value(cfg->noprompt, prv->noprompt, 0);
+
+    /***
+     * Okay.  We might need to catenate app IDs.  We'll know at
+     * request time.  So, let's make sure the "appid" is set assuming
+     * we *won't* have to, and into "oldappid" goes the stuff we'll
+     * need to include if we *do* have to.  Then we will have all the
+     * data we need to go either way at request time.
+     *
+     * ddj@cmu.edu 2006/05/10
+     */
+
+    /* Did the parent have an app ID? */
+    if (prv->appid.data) {
+        /* Yes.  Did the parent also have an *old* app ID? */
+        if (prv->oldappid.data) {
+	        /* Yes.  Glue them together and store as "old app ID". */
+	        ngx_pstrcat3(cf->pool, &cfg->oldappid, &prv->oldappid, &prv->appid, NULL);
+        } else {
+            /* No.  The parent's app ID is now the "old app ID". */
+            cfg->oldappid = prv->appid;
+        }
+    }
+
+    /* life is much easier if the default value is zero or NULL */
+    if (! cfg->appid.data)
+        cfg->appid = prv->appid;
+
+    if (! cfg->end_session.data)
+        cfg->end_session = prv->end_session;
+
+    if (prv->addl_requests.data) {
+        static ngx_str_t ampersand = ngx_string("&");
+        if (cfg->addl_requests.data)
+	        ngx_pstrcat3(cf->pool, &cfg->addl_requests,
+	                    &prv->addl_requests, &ampersand, &cfg->addl_requests);
+        else
+            cfg->addl_requests = prv->addl_requests;
+    }
+
+    if (! cfg->accept_realms.data)
+        cfg->accept_realms = prv->accept_realms;
+
+    if (cfg->keydirs && ! prv->keydirs) {
+        cfg->keydirs = prv->keydirs;
+    } else if (cfg->keydirs && prv->keydirs) {
+        ngx_keyval_t *kv_old = prv->keydirs->elts;
+        ngx_uint_t i;
+        for (i = 0; i < prv->keydirs->nelts; i++) {
+            ngx_keyval_t *kv_new = ngx_array_push(cfg->keydirs);
+            if (! kv_new)
+                return "pubcookie: not enough memory to merge keyed directives";
+            *kv_new = kv_old[i];
+        }
+    }
+
+    return NGX_CONF_OK;
+}
+
+
+static
+void pubcookie_dir_defaults (void *cfg)
+{
+    /* FIXME */
+}
+
+static
+void pubcookie_server_defaults (void *scfg)
+{
+    /* FIXME */
+}
+
+static
+int get_pre_s_from_cookie (request_rec * r)
+{
+    pubcookie_server_rec *scfg;
+    pbc_cookie_data *cookie_data = NULL;
+    char *cookie = NULL;
+    int ccnt = 0;
+
+    scfg = ngx_http_get_module_srv_conf(r, ngx_pubcookie_module);
+
+    ap_log_rerror (PC_LOG_DEBUG, r, "retrieving a pre-session ckookie");
+    while ((cookie = get_cookie (r, PBC_PRE_S_COOKIENAME, ccnt))) {
+        cookie_data = libpbc_unbundle_cookie (r, scfg->sectext,
+                                              cookie, ME (r), 0,
+                                              scfg->crypt_alg);
+        if (cookie_data) break;
+        ap_log_rerror (PC_LOG_INFO, r,
+                       "get_pre_s_from_cookie: can't unbundle pre_s cookie uri: %V\n",
+                       &r->uri);
+        ccnt++;
+    }
+    if (!cookie_data) {
+        ap_log_rerror (PC_LOG_INFO, r,
+                       "get_pre_s_from_cookie: no pre_s cookie, uri: %V\n",
+                       &r->uri);
+        return (-1);
+    }
+    dump_cookie_data(r, "get_pre_s_from_cookie", cookie_data);
+    return ((*cookie_data).broken.pre_sess_token);
+
+}
+
+/* User authentication */
+
+static int pubcookie_user_hook (request_rec * r)
+{
     int s;
+    pubcookie_server_rec *scfg;
+    pubcookie_dir_rec *cfg;
+    pubcookie_req_rec *rr;
     int first_time_in_session = 0;
     char creds;
+    ngx_table_elt_t *ifms;
+
+    scfg =
+        ngx_http_get_module_srv_conf(r, ngx_pubcookie_module);
+
+
+    cfg =
+        ngx_http_get_module_loc_conf(r, ngx_pubcookie_module);
+
+    rr =
+        ngx_http_get_module_ctx(r, ngx_pubcookie_module);
+
+    ap_log_rerror (PC_LOG_DEBUG, r,
+                   "pubcookie_user_hook: uri: %s auth_type: %s", r->uri,
+                   ap_auth_type (r));
+
+    if (!ap_auth_type (r))
+        return DECLINED;
 
     /* pass if the request is for our post-reply */
     if (ngx_strcmp_eq(r->uri, scfg->post_url))
-        return NGX_OK;
+        return OK;
+
+    /* if it's basic auth then it's not pubcookie */
+/*
+    if( strcasecmp(ap_auth_type(r), "basic") == 0 ) return DECLINED;
+ */
 
     /* get pubcookie creds or bail if not a pubcookie auth_type */
-    if ((creds = pubcookie_auth_type(r)) == PBC_CREDS_NONE)
-        return NGX_DECLINED;
+    if ((creds = pubcookie_auth_type (r)) == PBC_CREDS_NONE)
+        return DECLINED;
 
     /* pass if the request is for favicon.ico */
-    if (ngx_strcasecmp_c(r->uri, "/favicon.ico"))
-        return NGX_OK;
+    if (ngx_strcasecmp_c (r->uri, "/favicon.ico"))
+        return OK;
+
+    /* If this is a subrequest we either already have a user or we don't. */
+    if (r != r->main) {
+        pubcookie_req_rec *mr = ngx_http_get_module_ctx(r->main, ngx_pubcookie_module);
+        ap_log_rerror (PC_LOG_DEBUG, r, "  .. user_hook: sub: %p, user=%V",
+                       mr, &mr->user_name);
+        if (mr->user_name.data) {
+            return OK;
+        }
+        if (cfg->noprompt>0) {
+            rr->user_name = ((ngx_pubcookie_req_t *)ngx_http_get_module_ctx(r->main, ngx_pubcookie_module))->user_name;
+            return OK;
+        }
+        return HTTP_UNAUTHORIZED;
+    }
 
     rr->creds = creds;
-    s = pubcookie_user(r, cfg, scfg, rr);
+    s = pubcookie_user (r, scfg, cfg, rr);
     if (rr->failed) {
-        pc_req_log(r, " .. user_hook: user failed");
+        ap_log_rerror (PC_LOG_DEBUG, r, " .. user_hook: user failed");
         if (rr->failed == PBC_BAD_G_STATE) {
-            pc_req_log(r, " .. user_hook: Can't use Granting cookie");
-            stop_the_show(r, scfg, cfg, rr);
+            ap_log_rerror (PC_LOG_DEBUG, r,
+                           " .. user_hook: Can't use Granting cookie");
+            stop_the_show (r, scfg, cfg, rr);
             return DONE;
         } else if (rr->failed == PBC_BAD_USER) {
-            pc_req_log(r, " .. user_hook: bad user");
-            ap_rprintf(r, "Unauthorized user.");
+            ap_log_rerror (PC_LOG_DEBUG, r, " .. user_hook: bad user");
+
+
+            ap_rprintf (r, "Unauthorized user.");
             return DONE;
         }
-        auth_failed_handler(r, cfg, scfg, rr);
+        auth_failed_handler (r, scfg, cfg, rr);
         return DONE;
     }
-    pc_req_log(r, " .. user_hook: user '%V' OK", &rr->user_name);
+    ap_log_rerror (PC_LOG_DEBUG, r, " .. user_hook: user '%V' OK", &rr->user_name);
 
     if (rr->has_granting) {
-        pc_req_log(r, " .. user_hook: new session");
+        ap_log_rerror (PC_LOG_DEBUG, r, " .. user_hook: new session");
         first_time_in_session = 1;
         rr->has_granting = 0;
     }
 
-    if (check_end_session(r) & PBC_END_SESSION_REDIR) {
-        do_end_session_redirect(r, cfg, scfg, rr);
+    if (check_end_session (r) & PBC_END_SESSION_REDIR) {
+        do_end_session_redirect (r, scfg, cfg);
         return DONE;
-    } else if (check_end_session(r) & PBC_END_SESSION_ANY) {
-        clear_session_cookie(r);
-        rr->user_name = blank_str;        /* rest of apache needs a user if there's an authtype */
+    } else if (check_end_session (r) & PBC_END_SESSION_ANY) {
+        clear_session_cookie (r);
+        rr->user_name = blank_str; /* rest of apache needs a user if there's an authtype */
     } else if (cfg->inact_exp > 0 || first_time_in_session) {
         if ((!first_time_in_session) && (!rr->cookie_data)) {
-            pc_req_log(r, " .. user_hook: not first and no data! (sub?)");
-        } else {
-            set_session_cookie(r, cfg, scfg, rr, first_time_in_session);
-        }
+            ap_log_rerror (PC_LOG_DEBUG, r,
+                           " .. user_hook: not first and no data! (sub?)");
+        } else
+            set_session_cookie (r, scfg, cfg, rr, first_time_in_session);
     }
 
     /* Since we've done something any "if-modified"s must be cancelled
@@ -1586,60 +1813,70 @@ pubcookie_user_hook (ngx_http_request_t * r)
        (see: http_protocol.c:ap_meets_conditions) that we are not
        considering as they have not yet come up. */
 
-    if (NULL != r->headers_in.if_modified_since) {
-        pc_req_log(r, " .. user_hook: removing if-modified = %V",
-                    &r->headers_in.if_modified_since->value);
+    ifms = r->headers_in.if_modified_since;
+    if (ifms) {
+        ap_log_rerror (PC_LOG_DEBUG, r, " .. user_hook: removing if-modified = %V", &ifms->value);
         r->headers_in.if_modified_since = NULL;
     }
 
-    pc_req_log(r, " .. user_hook exit");
-    
+    ap_log_rerror (PC_LOG_DEBUG, r,
+                   " .. user_hook exit: user '%V', type '%s'", &rr->user_name,
+                   appid (r));
+
     return (s);
 }
 
-/*
- * Check user id
- */
-static int
-pubcookie_user (ngx_http_request_t * r,
-                ngx_pubcookie_loc_t *cfg,
-                ngx_pubcookie_srv_t *scfg,
-                ngx_pubcookie_req_t *rr)
+/* Check user id                                                              */
+static
+int pubcookie_user (request_rec * r, pubcookie_server_rec * scfg,
+                    pubcookie_dir_rec * cfg, pubcookie_req_rec * rr)
 {
     char *cookie;
+
     pbc_cookie_data *cookie_data;
     ngx_pool_t *p = r->pool;
     char *sess_cookie_name;
+
     int cred_from_trans;
     int pre_sess_from_cookie;
     int gcnt = 0;
     int scnt = 0;
 
-    pc_req_log(r, "pubcookie_user: going to check uri: %V creds: %c", &r->uri, rr->creds);
+    /* get defaults for unset args */
+    pubcookie_dir_defaults (cfg);
+    pubcookie_server_defaults (scfg);
+
+    ap_log_rerror (PC_LOG_DEBUG, r,
+                   "pubcookie_user: going to check uri: %V creds: %c",
+                   &r->uri, rr->creds);
 
     /* maybe dump the directory and server recs */
-    dump_recs(r, cfg, scfg);
+    dump_recs(r, scfg, cfg);
 
-    sess_cookie_name = make_session_cookie_name(p, PBC_S_COOKIENAME, appid(r));
+
+    sess_cookie_name =
+        make_session_cookie_name (p, PBC_S_COOKIENAME, appid (r));
 
     /* force SSL */
 
     if (! r->connection->ssl)
     {
-        pc_req_log(r, "Not SSL; uri: %V appid: %s", &r->uri, appid (r));
+
+        ap_log_rerror (PC_LOG_DEBUG, r,
+                       "Not SSL; uri: %V appid: %s", &r->uri, appid (r));
         rr->failed = PBC_BAD_AUTH;
         rr->redir_reason_no = PBC_RR_NOGORS_CODE;
-        return NGX_OK;
+        return OK;
     }
 
     /* before we check if they hav a valid S or G cookie see if it's a logout */
     if (check_end_session (r) & PBC_END_SESSION_ANY) {
-        return NGX_OK;
+        return OK;
     }
 
-    pc_req_log(r,
-               "pubcookie_user: about to look for some cookies; current uri: %V",
-               &r->uri);
+    ap_log_rerror (PC_LOG_DEBUG, r,
+                   "pubcookie_user: about to look for some cookies; current uri: %V",
+                   &r->uri);
 
     /* check if we hav a granting cookie's and a pre-session cookie.
        when using GET method we need the pair (pre sess and granting), but 
@@ -1649,169 +1886,171 @@ pubcookie_user (ngx_http_request_t * r,
        fail to decrypt aren't for our app server.  In cases where the crypt
        key is incorrect on the app server this will cause looping */
     cookie_data = NULL;
-    while ((cookie = get_cookie(r, PBC_G_COOKIENAME, gcnt))
-        && (scfg->use_post || get_cookie(r, PBC_PRE_S_COOKIENAME, 0))) {
-        cookie_data = libpbc_unbundle_cookie(r, scfg->sectext, cookie,
-                                             (char *) ap_get_server_name(r), 1, scfg->crypt_alg);
-        if (cookie_data)
-            break;
-        pc_req_log(r,
-                   "can't unbundle G cookie, it's probably not for us; uri: %V\n",
-                   &r->uri);
+    while ((cookie = get_cookie (r, PBC_G_COOKIENAME, gcnt))
+        && (scfg->use_post || get_cookie (r, PBC_PRE_S_COOKIENAME, 0))) {
+        cookie_data =
+            libpbc_unbundle_cookie (r, scfg->sectext, cookie,
+                                    ap_get_server_name (r), 1,
+                                    scfg->crypt_alg);
+        if (cookie_data) break;
+        ap_log_rerror (PC_LOG_INFO, r,
+                       "can't unbundle G cookie, it's probably not for us; uri: %V\n",
+                       &r->uri);
         gcnt++;
-        clear_granting_cookie(r);
+        clear_granting_cookie (r);
     }
 
     /* If no valid granting cookie, check session cookie  */
-    if (NULL == cookie_data
-        || ngx_strncasecmp ((u_char *) appid(r),
-                            (u_char *) cookie_data->broken.appid,
-                            sizeof(cookie_data->broken.appid) - 1) != 0)
-    {
+    if (!cookie_data || strncasecmp ((const char *) appid (r),
+                                     (const char *) cookie_data->broken.
+                                     appid,
+                                     sizeof (cookie_data->broken.appid) -
+                                     1) != 0) {
         char *ckfix;
-        while (NULL != (cookie = get_cookie(r, sess_cookie_name, scnt))) {
-            int cookie_len = strlen(cookie);
+        while ((cookie = get_cookie (r, sess_cookie_name, scnt))) {
             cookie_data =
                 libpbc_unbundle_cookie (r, scfg->sectext, cookie, ME(r), 0,
                                         scfg->crypt_alg);
 
-            if (cookie_data)
-                break;
+            if (cookie_data) break;
 
             /* try 'fixing' the cookie */
-            pc_req_log(r,
-                       "retring failed unbundle of S cookie; uri: %V\n",
-                       &r->uri);
-            ckfix = ngx_pnalloc(p, cookie_len + 3);
-            strcpy(ckfix, cookie);
-            strcat(ckfix, "==");
-            cookie_data = libpbc_unbundle_cookie (r, scfg->sectext, ckfix,
-                                                    ME(r), 0, scfg->crypt_alg);
-            if (cookie_data)
-                break;
+            ap_log_rerror (PC_LOG_INFO, r,
+                           "retring failed unbundle of S cookie; uri: %V\n",
+                           &r->uri);
+            ckfix = ap_pstrcat3 (p, cookie, "==", NULL);
+            cookie_data = libpbc_unbundle_cookie (r, scfg->sectext, ckfix, ME(r), 0,
+                                        scfg->crypt_alg);
+            if (cookie_data) break;
 
-            pc_req_log(r,
-                       "still can't unbundle S cookie; uri: %V\n",
-                       &r->uri);
+            ap_log_rerror (PC_LOG_INFO, r,
+                           "still can't unbundle S cookie; uri: %V\n",
+                           &r->uri);
             scnt++;
         }
 
         if (cookie_data) {
-
             dump_cookie_data(r, "pubcookie_user.1", cookie_data);
             rr->cookie_data = cookie_data;
 
             /* we tell everyone what authentication check we did */
+
             ngx_str_assign_copy(p, &rr->user_name, cookie_data->broken.user);
 
             /* save the full user/realm for later */
             ngx_str_assign_copy(p, &rr->user_full, cookie_data->broken.user);
 
             /* check for acceptable realms and strip realm */
-            if (cfg->strip_realm == 1 || cfg->accept_realms.data != NULL) {
-                ngx_str_t tmpstr;
+            if ((cfg->strip_realm == 1) || (cfg->accept_realms.data != NULL)) {
                 char *tmprealm, *tmpuser;
-                ngx_str_assign_copy(p, &tmpstr, cookie_data->broken.user);
-                tmpuser = (char *) tmpstr.data;
+                tmpuser =
+                    ap_pstrdup (p, (char *) (*cookie_data).broken.user);
                 tmprealm = index (tmpuser, '@');
                 if (tmprealm) {
                     tmprealm[0] = 0;
                     tmprealm++;
-                    /*FIXME ap_table_set (r->subprocess_env, "REMOTE_REALM", tmprealm);*/
+                    /* FIXME: ap_table_set (r->subprocess_env, "REMOTE_REALM",
+                                  tmprealm); */
                 }
 
                 if (cfg->strip_realm == 1) {
                     ngx_str_assign(rr->user_name, tmpuser);
                 } else {
-                    ngx_str_assign_copy(p, &rr->user_name, cookie_data->broken.user);
+                    ngx_str_assign_copy(p,
+                                        &rr->user_name,
+                                        cookie_data->broken.user);
                 }
 
                 if (cfg->accept_realms.data != NULL) {
                     int realmmatched = 0;
                     char *thisrealm;
-                    char *okrealms = (char *) ngx_pstrdup(p, &cfg->accept_realms);
+                    char *okrealms = str2charp (p, &cfg->accept_realms);
 
                     if (tmprealm == NULL) {
                         /* no realm to check !?!? */
-                        pc_req_log(r, "no realm in userid: %s returning UNAUTHORIZED",
-                                   cookie_data->broken.user);
-                        return NGX_HTTP_UNAUTHORIZED;
+                        ap_log_rerror (PC_LOG_ERR, r,
+                                       "no realm in userid: %s returning UNAUTHORIZED",
+                                       (char *) (*cookie_data).broken.
+                                       user);
+                        return HTTP_UNAUTHORIZED;
                     }
 
                     while (*okrealms && !realmmatched &&
-                           (thisrealm = ap_getword_white(p, &okrealms))) {
+                           (thisrealm =
+                            ap_getword_white_nc (p, &okrealms))) {
                         if (strcmp (thisrealm, tmprealm) == 0) {
                             realmmatched++;
                         }
                     }
                     if (realmmatched == 0) {
-                        return NGX_HTTP_UNAUTHORIZED;
+                        return HTTP_UNAUTHORIZED;
                     }
                 }
             }
 
-            if (libpbc_check_exp(r, cookie_data->broken.create_ts, cfg->hard_exp) == PBC_FAIL) {
-                pc_req_log(r,
-                           "S cookie hard expired; user: %s cookie timestamp: %d timeout: %d now: %d uri: %V\n",
-                           cookie_data->broken.user,
-                           cookie_data->broken.create_ts,
-                           cfg->hard_exp, pbc_time (NULL), &r->uri);
+            if (libpbc_check_exp
+                (r, (*cookie_data).broken.create_ts,
+                 cfg->hard_exp) == PBC_FAIL) {
+                ap_log_rerror (PC_LOG_INFO, r,
+                               "S cookie hard expired; user: %s cookie timestamp: %d timeout: %d now: %d uri: %V\n",
+                               (*cookie_data).broken.user,
+                               (*cookie_data).broken.create_ts,
+                               cfg->hard_exp, pbc_time (NULL), &r->uri);
                 rr->failed = PBC_BAD_AUTH;
                 rr->redir_reason_no = PBC_RR_SHARDEX_CODE;
-                return NGX_OK;
+                return OK;
             }
 
             if (cfg->inact_exp != -1 &&
-                libpbc_check_exp(r, cookie_data->broken.last_ts,
+                libpbc_check_exp (r, (*cookie_data).broken.last_ts,
                                   cfg->inact_exp) == PBC_FAIL) {
-                pc_req_log(r,
-                           "S cookie inact expired; user: %s cookie timestamp %d timeout: %d now: %d uri: %V\n",
-                           cookie_data->broken.user,
-                           cookie_data->broken.last_ts,
-                           cfg->inact_exp, pbc_time (NULL), &r->uri);
+                ap_log_rerror (PC_LOG_INFO, r,
+                               "S cookie inact expired; user: %s cookie timestamp %d timeout: %d now: %d uri: %V\n",
+                               (*cookie_data).broken.user,
+                               (*cookie_data).broken.last_ts,
+                               cfg->inact_exp, pbc_time (NULL), &r->uri);
                 rr->failed = PBC_BAD_AUTH;
                 rr->redir_reason_no = PBC_RR_SINAEX_CODE;
-                return NGX_OK;
+                return OK;
             }
 
-            pc_req_log(r,
-                       "S cookie chk reauth=%d, tok=%d",
-                       cfg->session_reauth,
-                       cookie_data->broken.pre_sess_token);
+            ap_log_rerror (PC_LOG_INFO, r,
+                           "S cookie chk reauth=%d, tok=%d",
+                           cfg->session_reauth,
+                           (*cookie_data).broken.pre_sess_token);
             if ((cfg->session_reauth >= 0)
-                && (cookie_data->broken.pre_sess_token == 23)) {
-                pc_req_log(r,
-                           "S cookie new force reauth");
+                && ((*cookie_data).broken.pre_sess_token == 23)) {
+                ap_log_rerror (PC_LOG_INFO, r,
+                               "S cookie new force reauth");
                 rr->failed = PBC_BAD_AUTH;
                 rr->redir_reason_no = PBC_RR_NEW_REAUTH;
-                return NGX_OK;
+                return OK;
             }
 
             /* Check if we're switching from noprompt to prompt */
-            pc_req_log(r,
-                       "S cookie chk nop: user=%V, nop=%d", &rr->user_name,
-                       cfg->noprompt);
-            if (cfg->noprompt <= 0 && !*rr->user_name.data) {
-                pc_req_log(r,
-                           "S cookie noprompt to prompt");
+            ap_log_rerror (PC_LOG_INFO, r,
+                           "S cookie chk nop: user=%V, nop=%d", &rr->user_name,
+                           cfg->noprompt);
+            if ((cfg->noprompt <= 0) && !*rr->user_name.data) {
+                ap_log_rerror (PC_LOG_INFO, r,
+                               "S cookie noprompt to prompt");
                 rr->failed = PBC_BAD_AUTH;
                 rr->redir_reason_no = PBC_RR_NOGORS_CODE;
-                return NGX_OK;
+                return OK;
             }
 
         } else {                /* hav S cookie */
 
-            pc_req_log(r,
-                       "No G or S cookie; uri: %V appid: %s sess_cookie_name: %s",
-                       &r->uri, appid (r), sess_cookie_name);
+            ap_log_rerror (PC_LOG_DEBUG, r,
+                           "No G or S cookie; uri: %V appid: %s sess_cookie_name: %s",
+                           &r->uri, appid (r), sess_cookie_name);
             rr->failed = PBC_BAD_AUTH;
             rr->redir_reason_no = PBC_RR_NOGORS_CODE;
-            return NGX_OK;
+            return OK;
 
         }                       /* end if session cookie */
 
     } else {
-
         dump_cookie_data(r, "pubcookie_user.2", cookie_data);
         rr->has_granting = 1;
 
@@ -1819,160 +2058,170 @@ pubcookie_user (ngx_http_request_t * r,
         if (!scfg->use_post)
             clear_pre_session_cookie (r);
 
-        pc_req_log(r,
-                   "pubcookie_user: has granting; current uri is: %V",
-                   &r->uri);
+        ap_log_rerror (PC_LOG_DEBUG, r,
+                       "pubcookie_user: has granting; current uri is: %V",
+                       &r->uri);
 
         /* If GET, check pre_session cookie */
         if (!scfg->use_post) {
             pre_sess_from_cookie = get_pre_s_from_cookie (r);
-            pc_req_log(r, "pubcookie_user: ret from get_pre_s_from_cookie");
-            if (cookie_data->broken.pre_sess_token !=
+            ap_log_rerror (PC_LOG_DEBUG, r,
+                           "pubcookie_user: ret from get_pre_s_from_cookie");
+            if ((*cookie_data).broken.pre_sess_token !=
                 pre_sess_from_cookie) {
-                pc_req_log(r, "pubcookie_user, pre session tokens mismatched, uri: %V",
-                           &r->uri);
-                pc_req_log(r, "pubcookie_user, pre session from G: %d PRE_S: %d, uri: %V",
-                           cookie_data->broken.pre_sess_token,
-                           pre_sess_from_cookie, &r->uri);
+                ap_log_rerror (PC_LOG_INFO, r,
+                               "pubcookie_user, pre session tokens mismatched, uri: %V",
+                               &r->uri);
+                ap_log_rerror (PC_LOG_DEBUG, r,
+                               "pubcookie_user, pre session from G: %d PRE_S: %d, uri: %V",
+                               (*cookie_data).broken.pre_sess_token,
+                               pre_sess_from_cookie, &r->uri);
                 rr->failed = PBC_BAD_AUTH;
-                rr->stop_message = ap_psprintf(r->pool,
-                            "Couldn't decode pre-session cookie. (from G: %d from PRE_S: %d)",
-                            cookie_data->broken.pre_sess_token, pre_sess_from_cookie);
+                rr->stop_message =
+                    ap_psprintf (p,
+                                 "Couldn't decode pre-session cookie. (from G: %d from PRE_S: %d)",
+                                 (*cookie_data).broken.pre_sess_token,
+                                 pre_sess_from_cookie);
                 rr->redir_reason_no = PBC_RR_BADPRES_CODE;
-                return NGX_OK;
+                return OK;
             }
         }
 
         /* the granting cookie gets blanked too early and another login */
         /* server loop is required, this just speeds up that loop */
         if (strncmp (cookie, PBC_X_STRING, PBC_XS_IN_X_STRING) == 0) {
-            pc_req_log(r,
-                       "pubcookie_user: 'speed up that loop' logic; uri is: %V\n",
-                       &r->uri);
+            ap_log_rerror (PC_LOG_DEBUG, r,
+                           "pubcookie_user: 'speed up that loop' logic; uri is: %V\n",
+                           &r->uri);
 
             rr->failed = PBC_BAD_AUTH;
             rr->redir_reason_no = PBC_RR_DUMMYLP_CODE;
-            return NGX_OK;
+            return OK;
         }
+
 
         ngx_str_assign_copy(p, &rr->user_name, cookie_data->broken.user);
 
         /* Make sure we really got a user (unless noprompt) */
-        if (!*rr->user_name.data && cfg->noprompt <= 0) {
-            pc_req_log(r, "No user and not a noprompt");
-            rr->stop_message = "Required user login didn't happen";
+        if ((!*rr->user_name.data) && (cfg->noprompt <= 0)) {
+            ap_log_rerror (PC_LOG_INFO, r,
+                               "No user and not a noprompt");
+            rr->stop_message = ap_pstrdup (p, "Required user login didn't happen");
             rr->failed = PBC_BAD_G_STATE;
             return (DONE);
         }
 
-        pc_req_log(r, "pubcookie_user: set user (%V)", &rr->user_name);
+        ap_log_rerror (PC_LOG_DEBUG, r,
+                       "pubcookie_user: set type (%s) and user (%V)",
+                       "?", &rr->user_name);
 
         /* save the full user/realm for later */
-        ngx_str_assign_copy(p, &rr->user_full, cookie_data->broken.user);
+        ngx_str_assign_copy(p, &rr->user_full, (*cookie_data).broken.user);
 
         /* check for acceptable realms and strip realm */
         if (*rr->user_full.data) {
-            ngx_str_t tmps;
             char *tmprealm, *tmpuser;
-            ngx_str_assign_copy(p, &tmps, cookie_data->broken.user);
-            tmpuser = (char *) tmps.data;
+            tmpuser = ap_pstrdup (p, (char *) (*cookie_data).broken.user);
             tmprealm = index (tmpuser, '@');
             if (tmprealm) {
                 tmprealm[0] = 0;
                 tmprealm++;
-                /*FIXME: ap_table_set (r->subprocess_env, "REMOTE_REALM", tmprealm);*/
+                /* FIXME ap_table_set (r->subprocess_env, "REMOTE_REALM", tmprealm); */
             }
 
             if (cfg->strip_realm == 1) {
                 ngx_str_assign(rr->user_name, tmpuser);
             } else {
-                ngx_str_assign_copy(p, &rr->user_name, cookie_data->broken.user);
+                ngx_str_assign_copy (p, &rr->user_name,
+                                        cookie_data->broken.user);
             }
 
             if (cfg->accept_realms.data != NULL) {
                 int realmmatched = 0;
                 char *thisrealm;
-                char *okrealms = (char *) ngx_pstrdup(p, &cfg->accept_realms);
+                char *okrealms = str2charp (p, &cfg->accept_realms);
                 while (*okrealms && !realmmatched &&
-                       (thisrealm = ap_getword_white(p, &okrealms))) {
+                       (thisrealm = ap_getword_white_nc (p, &okrealms))) {
                     if (strcmp (thisrealm, tmprealm) == 0) {
                         realmmatched++;
                     }
                 }
                 if (realmmatched == 0) {
-                    return NGX_HTTP_UNAUTHORIZED;
+                    return HTTP_UNAUTHORIZED;
                 }
             }
         }
 
         /* make sure force reauth requests actually get a reauth */
         if ( cfg->session_reauth > 0 
-             && cookie_data->broken.version[3] == PBC_VERSION_REAUTH_NO ) {
+             && (*cookie_data).broken.version[3] == PBC_VERSION_REAUTH_NO ) {
         
-            pc_req_log(r,
-                       "Force reauth didn't get a re-auth: %c", cookie_data->broken.version[3]);
+            ap_log_rerror (PC_LOG_INFO, r,
+                               "Force reauth didn't get a re-auth: %c", (*cookie_data).broken.version[3]);
             /* Send out bad session_reauth error */
-            rr->stop_message = "Required Session Reauthentication didn't happen";
+            rr->stop_message = ap_pstrdup (p, "Required Session Reauthentication didn't happen");
             rr->failed = PBC_BAD_G_STATE;
             return (DONE);
         }
 
-        if (libpbc_check_exp(r, cookie_data->broken.create_ts, PBC_GRANTING_EXPIRE) == PBC_FAIL) {
-            pc_req_log(r,
-                       "pubcookie_user: G cookie expired by %ld; user: %s create: %ld uri: %V",
-                       pbc_time(NULL) - cookie_data->broken.create_ts -
-                       PBC_GRANTING_EXPIRE, cookie_data->broken.user,
-                       cookie_data->broken.create_ts, &r->uri);
+        if (libpbc_check_exp
+            (r, (*cookie_data).broken.create_ts,
+             PBC_GRANTING_EXPIRE) == PBC_FAIL) {
+            ap_log_rerror (PC_LOG_INFO, r,
+                           "pubcookie_user: G cookie expired by %ld; user: %s create: %ld uri: %V",
+                           pbc_time (NULL) - (*cookie_data).broken.create_ts -
+                           PBC_GRANTING_EXPIRE, (*cookie_data).broken.user,
+                           (*cookie_data).broken.create_ts, &r->uri);
             rr->failed = PBC_BAD_AUTH;
             rr->redir_reason_no = PBC_RR_GEXP_CODE;
-            return NGX_OK;
+            return OK;
         }
 
     }
 
     /* check appid */
-    if (ngx_strncasecmp(appid(r),
-                         cookie_data->broken.appid,
-                         sizeof(cookie_data->broken.appid) - 1) != 0) {
-        pc_req_log(r,
-                   "pubcookie_user: wrong appid; current: %s cookie: %s uri: %V",
-                   appid (r), cookie_data->broken.appid, &r->uri);
+    if (strncasecmp ((const char *) appid (r),
+                     (const char *) (*cookie_data).broken.appid,
+                     sizeof ((*cookie_data).broken.appid) - 1) != 0) {
+        ap_log_rerror (PC_LOG_INFO, r,
+                       "pubcookie_user: wrong appid; current: %s cookie: %s uri: %V",
+                       appid (r), (*cookie_data).broken.appid, &r->uri);
         rr->failed = PBC_BAD_AUTH;
         rr->redir_reason_no = PBC_RR_WRONGAPPID_CODE;
-        return NGX_OK;
+        return OK;
     }
 
     /* check appsrv id */
-    if (ngx_strncasecmp (appsrvid(r),
-                     cookie_data->broken.appsrvid,
-                     sizeof(cookie_data->broken.appsrvid) - 1) != 0) {
-        pc_req_log(r,
-                   "pubcookie_user: wrong app server id; current: %s cookie: %s uri: %V",
-                   appsrvid (r), cookie_data->broken.appsrvid,
-                   &r->uri);
+    if (strncasecmp ((const char *) appsrvid (r),
+                     (const char *) (*cookie_data).broken.appsrvid,
+                     sizeof ((*cookie_data).broken.appsrvid) - 1) != 0) {
+        ap_log_rerror (PC_LOG_INFO, r,
+                       "pubcookie_user: wrong app server id; current: %s cookie: %s uri: %V",
+                       appsrvid (r), (*cookie_data).broken.appsrvid,
+                       &r->uri);
         rr->failed = PBC_BAD_AUTH;
         rr->redir_reason_no = PBC_RR_WRONGAPPSRVID_CODE;
-        return NGX_OK;
+        return OK;
     }
 
     /* check version id */
-    if (libpbc_check_version(r, cookie_data) == PBC_FAIL) {
-        pc_req_log(r,
-                   "pubcookie_user: wrong version id; module: %d cookie: %d uri: %V",
-                   PBC_VERSION, cookie_data->broken.version, &r->uri);
+    if (libpbc_check_version (r, cookie_data) == PBC_FAIL) {
+        ap_log_rerror (PC_LOG_INFO, r,
+                       "pubcookie_user: wrong version id; module: %d cookie: %d uri: %V",
+                       PBC_VERSION, (*cookie_data).broken.version, &r->uri);
         rr->failed = PBC_BAD_AUTH;
         rr->redir_reason_no = PBC_RR_WRONGVER_CODE;
-        return NGX_OK;
+        return OK;
     }
 
     /* check creds */
     if (rr->creds != cookie_data->broken.creds) {
-        pc_req_log(r,
-                   "pubcookie_user: wrong creds; required: %c cookie: %c uri: %V",
-                   rr->creds, cookie_data->broken.creds, &r->uri);
+        ap_log_rerror (PC_LOG_INFO, r,
+                       "pubcookie_user: wrong creds; required: %c cookie: %c uri: %V",
+                       rr->creds, (*cookie_data).broken.creds, &r->uri);
         rr->failed = PBC_BAD_AUTH;
         rr->redir_reason_no = PBC_RR_WRONGCREDS_CODE;
-        return NGX_OK;
+        return OK;
     }
 
     /* extensions */
@@ -1990,143 +2239,133 @@ pubcookie_user (ngx_http_request_t * r,
         cred_from_trans = 0;    /* not transferring creds */
         cookie = get_cookie (r, mycookie, 0);
     }
-
     if (cookie) {
-        char *blob = ngx_palloc (p, strlen(cookie));
+        char *blob = ap_palloc (p, strlen (cookie));
         int bloblen;
         char *plain = NULL;
         int plainlen;
         char *krb5ccname;
         ngx_file_t f;
+
+
+
+
+
         int res = 0;
 
         /* base64 decode cookie */
-        if (!libpbc_base64_decode(r, (u_char *) cookie, (u_char *) blob, &bloblen)) {
-            pc_req_log(r, "credtrans: libpbc_base64_decode() failed");
+        if (!libpbc_base64_decode (r, (unsigned char *) cookie,
+                                   (unsigned char *) blob, &bloblen)) {
+            ap_log_rerror (PC_LOG_ERR, r,
+                           "credtrans: libpbc_base64_decode() failed");
             res = -1;
         }
 
         /* decrypt cookie. if credtrans is set, then it's from login server
            to me. otherwise it's from me to me. */
-        if (!res && libpbc_rd_priv(r, scfg->sectext, cred_from_trans ?
-                                    ap_get_server_name(r) : NULL,
+        if (!res && libpbc_rd_priv (r, scfg->sectext, cred_from_trans ?
+                                    ap_get_server_name (r) : NULL,
                                     cred_from_trans ? 1 : 0,
                                     blob, bloblen, &plain, &plainlen,
                                     scfg->crypt_alg)) {
-            pc_req_log(r,
-                       "credtrans: libpbc_rd_priv() failed");
+            ap_log_rerror (PC_LOG_ERR, r,
+                           "credtrans: libpbc_rd_priv() failed");
             res = -1;
         }
 
         if (!res && plain) {
             /* sigh, copy it into the memory pool */
-            rr->cred_transfer.data = ngx_pnalloc(p, plainlen);
-            ngx_memcpy(rr->cred_transfer.data, plain, plainlen);
+            rr->cred_transfer.data = (u_char *) ap_pnalloc(p, plainlen);
+            memcpy((char *) rr->cred_transfer.data, plain, plainlen);
             rr->cred_transfer.len = plainlen;
         }
 
         /* set a random KRB5CCNAME */
-        krb5ccname = ngx_pnalloc(p, 64);
-        ngx_sprintf((u_char *) krb5ccname, "/tmp/k5cc_%d_%V%Z", getpid(), &rr->user_full);
+        krb5ccname = 
+            ap_psprintf (p, "/tmp/k5cc_%d_%V", getpid (), &rr->user_full);
         f.fd = NGX_INVALID_FILE;
         f.sys_offset = 0;
         if (!res) {
             /* save these creds in that file */
+
+
             f.fd = ngx_open_file (krb5ccname, NGX_FILE_RDWR,
                                   NGX_FILE_CREATE_OR_OPEN | NGX_FILE_TRUNCATE,
                                   0640);
+
             if (f.fd == NGX_INVALID_FILE) {
-                pc_req_log(r, "credtrans: setenv() failed");
+                ap_log_rerror (PC_LOG_ERR, r,
+                               "credtrans: setenv() failed");
                 res = -1;
             }
         }
-        if (!res && ngx_write_file (&f, rr->cred_transfer.data,
-                                    rr->cred_transfer.len, 0) == NGX_ERROR) {
-            pc_req_log(r, "credtrans: setenv() failed");
+        if (!res &&
+
+            ngx_write_file (&f,
+                            rr->cred_transfer.data,
+                            rr->cred_transfer.len,
+                            0)
+                            == NGX_ERROR
+            ) {
+            ap_log_rerror (PC_LOG_ERR, r, "credtrans: setenv() failed");
             res = -1;
         }
 
         if (f.fd != NGX_INVALID_FILE) {
+
+
             ngx_close_file (f.fd);
+
+
         }
 
         if (cred_from_trans) {
-            clear_transfer_cookie(r);
+            clear_transfer_cookie (r);
         }
     }
 
-    pc_req_log(r,
-               "pubcookie_user: everything is o'tay; current uri is: %V",
-               &r->uri);
+    ap_log_rerror (PC_LOG_DEBUG, r,
+                   "pubcookie_user: everything is o'tay; current uri is: %V",
+                   &r->uri);
 
-    return NGX_OK;
+    return OK;
 }
 
 
-/****************************************
- * Authentication handler
- */
+/* Check authz */
 
-static ngx_int_t
-ngx_pubcookie_authz_handler(ngx_http_request_t *r)
+static int pubcookie_authz_hook (request_rec * r)
 {
     ngx_int_t rc, rc2;
     ngx_pubcookie_srv_t *scfg = ngx_http_get_module_srv_conf(r, ngx_pubcookie_module);
 
     /* get pubcookie creds or bail if not a pubcookie auth_type */
     if (pubcookie_auth_type(r) == PBC_CREDS_NONE)
-        return NGX_DECLINED;
+        return DECLINED;
 
     if (0 == scfg->locations) /* server not enabled */
-        return NGX_OK;
+        return OK;
 
     if (r != r->main) /* subrequest */
-        return NGX_OK;
+        return OK;
 
     if (ngx_strcasecmp_c(r->uri, "/favicon.ico"))
-        return NGX_OK;
+        return OK;
 
     /* pass if it is our post-reply */
     if (ngx_strcmp_eq(r->uri, scfg->post_url))
-        return NGX_OK;
+        return OK;
 
     pubcookie_setup_request(r);
     rc = pubcookie_user_hook(r);
     rc2 = pubcookie_finish_request(r);
-    return (rc2 == NGX_DECLINED ? rc : rc2);
+    return (rc2 == DECLINED ? rc : rc2);
 }
 
-/*
- * converts an authtype name to a pubcookie credential number
- */
-static char
-pubcookie_auth_type (ngx_http_request_t * r)
+/* Set any additional environment variables for the client */
+static int pubcookie_fixups (request_rec * r)
 {
-    ngx_pubcookie_loc_t  *conf = ngx_http_get_module_loc_conf(r, ngx_pubcookie_module);
-    static const char * auth_type = "WebISO";
-
-    if (NULL == conf || NULL == conf->appid.data)
-        return PBC_CREDS_NONE;
-
-    return libpbc_get_credential_id (r, auth_type);
-}
-
-/*
- *  ngx_pubcookie_init - inject into access phase chain
- */
-static ngx_int_t
-ngx_pubcookie_init(ngx_conf_t *cf)
-{
-    ngx_http_handler_pt        *h;
-    ngx_http_core_main_conf_t  *core_cf;
-
-    core_cf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
-
-    if (NULL == (h = ngx_array_push(&core_cf->phases[NGX_HTTP_ACCESS_PHASE].handlers)))
-        return NGX_ERROR;
-    *h = ngx_pubcookie_authz_handler;
-
-    return NGX_OK;
+    /* FIXME */
 }
 
 /*************************
@@ -2431,7 +2670,7 @@ pubcookie_handle_post_reply (ngx_http_request_t * r)
     greply = ap_table_get (args, PBC_G_COOKIENAME);
     if (!greply) {
         /* Send out bad call error */
-        rr->stop_message = "No granting reply";
+        rr->stop_message = ap_pstrdup (p, "No granting reply");
         stop_the_show (r, scfg, cfg, rr);
         return (OK);
     }
@@ -2445,7 +2684,7 @@ pubcookie_handle_post_reply (ngx_http_request_t * r)
         /* Send out bad call error */
         ap_log_rerror (PC_LOG_ERR, r,
                        "bad redirect url: %s", r_url);
-        rr->stop_message = "Invalid relay URL";
+        rr->stop_message = ap_pstrdup (p, "Invalid relay URL");
         stop_the_show (r, scfg, cfg, rr);
         return (OK);
     }
@@ -2820,17 +3059,14 @@ static ngx_command_t  ngx_pubcookie_commands[] = {
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
       NGX_HTTP_SRV_CONF_OFFSET,
-      offsetof(ngx_pubcookie_srv_t, behind_proxy),
+      offsetof(ngx_pubcookie_srv_t, vitki_behind_proxy),
       NULL },
 
     ngx_null_command
 };
 
-
-static struct {
-    const char *name;
-    size_t offset;
-} pbc_cfg_str_fields[] = {
+static pbc_param_off_t 
+pbc_cfg_str_fields[] = {
     { "enterprise_domain",  offsetof(ngx_pubcookie_srv_t, enterprise_domain) },
     { "ssl_key_file",       offsetof(ngx_pubcookie_srv_t, ssl_key_file) },
     { "ssl_cert_file",      offsetof(ngx_pubcookie_srv_t, ssl_cert_file) },
@@ -2847,17 +3083,17 @@ static struct {
 
 
 static ngx_http_module_t  ngx_pubcookie_module_ctx = {
-    NULL,                             /* preconfiguration */
-    ngx_pubcookie_init,               /* postconfiguration */
+    NULL,                       /* preconfiguration */
+    pubcookie_init,             /* postconfiguration */
 
-    NULL,                             /* create main configuration */
-    NULL,                             /* init main configuration */
+    NULL,                       /* create main configuration */
+    NULL,                       /* init main configuration */
 
-    ngx_pubcookie_create_srv_conf,    /* create server configuration */
-    ngx_pubcookie_merge_srv_conf,     /* merge server configuration */
+    pubcookie_server_create,    /* create server configuration */
+    pubcookie_server_merge,     /* merge server configuration */
 
-    ngx_pubcookie_create_loc_conf,    /* create location configuration */
-    ngx_pubcookie_merge_loc_conf      /* merge location configuration */
+    pubcookie_dir_create,       /* create location configuration */
+    pubcookie_dir_merge         /* merge location configuration */
 };
 
 ngx_module_t ngx_pubcookie_module = {
@@ -3101,168 +3337,6 @@ pubcookie_set_accept_realms (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 }
 
 
-static void *
-ngx_pubcookie_create_loc_conf(ngx_conf_t *cf)
-{
-    ngx_pubcookie_loc_t *cfg;
-
-    if (NULL == (cfg = ngx_pcalloc(cf->pool, sizeof(ngx_pubcookie_loc_t))))
-        return NULL;
-    cfg->signature = PBC_LOC_SIGNATURE;
-
-    cfg->inact_exp = NGX_CONF_UNSET;
-    cfg->hard_exp = NGX_CONF_UNSET;
-    cfg->non_ssl_ok = NGX_CONF_UNSET;
-    cfg->session_reauth = NGX_CONF_UNSET;
-    cfg->strip_realm = NGX_CONF_UNSET;
-    cfg->noprompt = NGX_CONF_UNSET;
-
-    return cfg;
-}
-
-static char *
-ngx_pubcookie_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
-{
-    ngx_pubcookie_loc_t  *prv = parent;
-    ngx_pubcookie_loc_t  *cfg = child;
-
-    ngx_conf_merge_value(cfg->inact_exp, prv->inact_exp, PBC_DEFAULT_INACT_EXPIRE);
-    ngx_conf_merge_value(cfg->hard_exp, prv->hard_exp, PBC_DEFAULT_HARD_EXPIRE);
-    ngx_conf_merge_value(cfg->non_ssl_ok, prv->non_ssl_ok, 0);
-    ngx_conf_merge_value(cfg->session_reauth, prv->session_reauth, 0);
-    ngx_conf_merge_value(cfg->strip_realm, prv->strip_realm, 0);
-    ngx_conf_merge_value(cfg->noprompt, prv->noprompt, 0);
-
-    /***
-     * Okay.  We might need to catenate app IDs.  We'll know at
-     * request time.  So, let's make sure the "appid" is set assuming
-     * we *won't* have to, and into "oldappid" goes the stuff we'll
-     * need to include if we *do* have to.  Then we will have all the
-     * data we need to go either way at request time.
-     *
-     * ddj@cmu.edu 2006/05/10
-     */
-
-    /* Did the parent have an app ID? */
-    if (prv->appid.data) {
-        /* Yes.  Did the parent also have an *old* app ID? */
-        if (prv->oldappid.data) {
-	        /* Yes.  Glue them together and store as "old app ID". */
-	        ngx_pstrcat3(cf->pool, &cfg->oldappid, &prv->oldappid, &prv->appid, NULL);
-        } else {
-            /* No.  The parent's app ID is now the "old app ID". */
-            cfg->oldappid = prv->appid;
-        }
-    }
-
-    /* life is much easier if the default value is zero or NULL */
-    if (! cfg->appid.data)
-        cfg->appid = prv->appid;
-
-    if (! cfg->end_session.data)
-        cfg->end_session = prv->end_session;
-
-    if (prv->addl_requests.data) {
-        static ngx_str_t ampersand = ngx_string("&");
-        if (cfg->addl_requests.data)
-	        ngx_pstrcat3(cf->pool, &cfg->addl_requests,
-	                    &prv->addl_requests, &ampersand, &cfg->addl_requests);
-        else
-            cfg->addl_requests = prv->addl_requests;
-    }
-
-    if (! cfg->accept_realms.data)
-        cfg->accept_realms = prv->accept_realms;
-
-    if (cfg->keydirs && ! prv->keydirs) {
-        cfg->keydirs = prv->keydirs;
-    } else if (cfg->keydirs && prv->keydirs) {
-        ngx_keyval_t *kv_old = prv->keydirs->elts;
-        ngx_uint_t i;
-        for (i = 0; i < prv->keydirs->nelts; i++) {
-            ngx_keyval_t *kv_new = ngx_array_push(cfg->keydirs);
-            if (! kv_new)
-                return "pubcookie: not enough memory to merge keyed directives";
-            *kv_new = kv_old[i];
-        }
-    }
-
-    return NGX_CONF_OK;
-}
-
-
-static void *
-ngx_pubcookie_create_srv_conf(ngx_conf_t *cf)
-{
-    ngx_pubcookie_srv_t  *scfg;
-
-    if (NULL == (scfg = ngx_pcalloc(cf->pool, sizeof(ngx_pubcookie_srv_t))))
-        return NULL;
-
-    scfg->signature = PBC_SRV_SIGNATURE;
-    scfg->log = cf->log;
-    scfg->pool = cf->pool;
-
-    scfg->dirdepth = NGX_CONF_UNSET;
-    scfg->noblank = NGX_CONF_UNSET;
-    scfg->catenate = NGX_CONF_UNSET;
-    scfg->no_clean_creds = NGX_CONF_UNSET;
-    scfg->use_post = NGX_CONF_UNSET;
-    scfg->behind_proxy = NGX_CONF_UNSET;
-
-    scfg->crypt_alg = NGX_CONF_UNSET_UINT;
-    scfg->dummy_super_debug = NGX_CONF_UNSET;
-
-    return scfg;
-}
-
-
-static char *
-ngx_pubcookie_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child)
-{
-    ngx_pubcookie_srv_t *sprv = parent;
-    ngx_pubcookie_srv_t *scfg = child;
-    int i;
-
-    ngx_conf_merge_value(scfg->dirdepth, sprv->dirdepth, PBC_DEFAULT_DIRDEPTH);
-    ngx_conf_merge_value(scfg->noblank, sprv->noblank, 0);
-    ngx_conf_merge_value(scfg->catenate, sprv->catenate, 0);
-    ngx_conf_merge_value(scfg->no_clean_creds, sprv->no_clean_creds, 0);
-    ngx_conf_merge_value(scfg->use_post, sprv->use_post, 0);
-    ngx_conf_merge_uint_value(scfg->crypt_alg, sprv->crypt_alg, PBC_DEF_CRYPT);
-    ngx_conf_merge_value(scfg->behind_proxy, sprv->behind_proxy, 0);
-
-    for (i = 0; pbc_cfg_str_fields[i].name != NULL; i++) {
-        int off = pbc_cfg_str_fields[i].offset;
-        ngx_str_t *ps = (ngx_str_t *)((char *) sprv + off);
-        ngx_str_t *cs = (ngx_str_t *)((char *) scfg + off);
-        if (NULL == cs->data)
-            *cs = *ps;
-    }
-
-    if (0 == scfg->locations)
-        return NGX_CONF_OK;
-
-    if (scfg->use_post && NULL == scfg->post_url.data)
-        return "pubcookie_post: post reply location e.g. /PubCookie.reply must be set!";
-
-    if (NULL == scfg->ssl_key_file.data)
-        return "pubcookie_session_key_file: configuration directive must be set!";
-    if (NULL == scfg->ssl_cert_file.data)
-        return "pubcookie_session_cert_file: configuration directive must be set!";
-    if (NULL == scfg->granting_cert_file.data)
-        return "pubcookie_granting_cert_file: configuration directive must be set!";
-    if (NULL == scfg->keydir.data)
-        return "pubcookie_key_dir: configuration directive must be set!";
-    if (NULL == scfg->login.data)
-        return "pubcookie_login: configuration directive must be set!";
-
-    if (libpbc_pubcookie_init((pool *) scfg, &scfg->sectext) != PBC_OK)
-        return "pubcookie_init: libpbc_pubcookie_init failed.";
-    pc_cf_log(cf, "pubcookie_init: libpbc init done");
-
-    return NGX_CONF_OK;
-}
 
 #if 0
 static char *
@@ -3322,7 +3396,7 @@ create_location (ngx_conf_t *cf, const char *loc_name)
  * Debugging
  */
 static void
-dump_recs(ngx_http_request_t *r, ngx_pubcookie_loc_t *c, ngx_pubcookie_srv_t *s)
+dump_recs (request_rec *r, pubcookie_server_rec *s, pubcookie_dir_rec *c)
 {
 #if defined(DEBUG_DUMP_RECS)
     pc_req_log(r, "+--- dump_loc_req ---");
@@ -3333,7 +3407,7 @@ dump_recs(ngx_http_request_t *r, ngx_pubcookie_loc_t *c, ngx_pubcookie_srv_t *s)
     pc_req_log(r, "| crypt_key=%V egd_socket=%V",
             &s->crypt_key, &s->egd_socket);
     pc_req_log(r, "| dirdepth=%d noblank=%d catenate=%d no_clean_creds=%d use_post=%d behind_proxy=%d",
-            s->dirdepth, s->noblank, s->catenate, s->no_clean_creds, s->use_post, s->behind_proxy);
+            s->dirdepth, s->noblank, s->catenate, s->no_clean_creds, s->use_post, s->vitki_behind_proxy);
     pc_req_log(r, "| oldappid=%V appid=%V appsrvid=%V",
             &c->oldappid, &c->appid, &s->appsrvid);
     pc_req_log(r, "| post_url=%V end_session=%V addl_requests=%V accept_realms=%V",
