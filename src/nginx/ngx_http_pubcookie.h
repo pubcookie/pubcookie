@@ -39,6 +39,8 @@ typedef ngx_http_request_t pool;
 /* Module configuration struct */
 typedef struct {
     uint32_t signature;
+    ngx_flag_t marked;
+    ngx_str_t location;
     ngx_int_t inact_exp;
     ngx_int_t hard_exp;
     ngx_flag_t non_ssl_ok;
@@ -127,12 +129,14 @@ extern int pubcookie_super_debug;
 #define PBC_LOG_DEBUG_OUTPUT  NGX_LOG_DEBUG
 #define PBC_LOG_AUDIT         NGX_LOG_DEBUG
 
+#define PBC_SUPER_LOG_LEVEL   NGX_LOG_WARN
+
 #define pbc_ngx_log(log,verb,args...) \
         do { \
             ngx_uint_t _verb = (verb); \
             ngx_log_t *_log = (log); \
-            if (pubcookie_super_debug && _verb > NGX_LOG_NOTICE) \
-                _verb = NGX_LOG_NOTICE; \
+            if (pubcookie_super_debug && _verb > PBC_SUPER_LOG_LEVEL) \
+                _verb = PBC_SUPER_LOG_LEVEL; \
             if (pubcookie_super_debug || _verb <= _log->log_level) \
                 ngx_log_error_core(_verb, _log, 0, args); \
         } while(0)

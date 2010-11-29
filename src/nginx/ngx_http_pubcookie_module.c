@@ -690,6 +690,30 @@ pubcookie_finish_request (ngx_http_request_t *r)
     return ngx_http_output_filter(r, &out);
 }
 
+static ngx_int_t
+mark_location (ngx_conf_t *cf, ngx_pubcookie_loc_t *cfg, const char *msg)
+{
+    ngx_pubcookie_srv_t *scfg;
+    ngx_http_core_srv_conf_t  *core_scf;
+    ngx_http_core_loc_conf_t  *core_lcf;
+
+    if (! cfg->appid.data)
+        return NGX_DECLINED;
+
+    scfg = ngx_http_conf_get_module_srv_conf(cf, pubcookie_module);
+    core_scf = ngx_http_conf_get_module_srv_conf(cf, ngx_http_core_module);
+    core_lcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
+
+    cfg->marked = 1;
+    cfg->location = core_lcf->name;
+    scfg->locations++; /* mark server as pubcookie-enabled */
+
+    pbc_ngx_log(cf->log, PC_LOG_DEBUG,
+                "pubcookie_set_appid(%s): server \"%V\" location \"%V\" secured as \"%V\"",
+                msg, &core_scf->server_name, &core_lcf->name, &cfg->appid);
+    return NGX_OK;
+}
+
 #if 0
 static char *
 create_location (ngx_conf_t *cf, const char *loc_name)
@@ -888,10 +912,14 @@ int check_end_session (request_rec * r)
 static
 char pubcookie_auth_type (request_rec * r)
 {
+    pubcookie_dir_rec *cfg;
     const char *auth_type;
+    cfg = ngx_http_get_module_loc_conf(r, pubcookie_module);
+    if (! cfg->marked)
+        return PBC_CREDS_NONE;
     auth_type = ap_auth_type (r);
     /* ok, check the list in libpubcookie */
-    return libpbc_get_credential_id (r, ap_auth_type(r));
+    return libpbc_get_credential_id (r, auth_type);
 }
 
 /* figure out the appid                                                      */
@@ -1718,6 +1746,7 @@ static char *pubcookie_server_merge (ngx_conf_t *cf, void *parent, void *child)
 {
     ngx_pubcookie_srv_t *sprv = parent;
     ngx_pubcookie_srv_t *scfg = child;
+    ngx_http_core_srv_conf_t *core_scf = ngx_http_conf_get_module_srv_conf(cf, ngx_http_core_module);
     int i;
 
     ngx_conf_merge_value(scfg->dirdepth, sprv->dirdepth, PBC_DEFAULT_DIRDEPTH);
@@ -1736,7 +1765,11 @@ static char *pubcookie_server_merge (ngx_conf_t *cf, void *parent, void *child)
             *cs = *ps;
     }
 
-    if (0 == scfg->locations)
+    pbc_ngx_log(cf->log, PC_LOG_DEBUG,
+                "pubcookie_server_merge: server %V has %d locations",
+                &core_scf->server_name, scfg->locations);
+
+    if (! scfg->locations)
         return NGX_CONF_OK;
 
     if (scfg->use_post && !scfg->post_reply_url.data)
@@ -1808,8 +1841,11 @@ static char *pubcookie_dir_merge (ngx_conf_t *cf, void *parent, void *child)
     }
 
     /* life is much easier if the default value is zero or NULL */
-    if (! cfg->appid.data)
+    if (! cfg->appid.data) {
         cfg->appid = prv->appid;
+        if (cfg->appid.data)
+            mark_location(cf, cfg, "merge");
+    }
 
     if (! cfg->end_session.data)
         cfg->end_session = prv->end_session;
@@ -1898,7 +1934,7 @@ static int pubcookie_user_hook (request_rec * r)
     rr = ngx_http_get_module_ctx(r, pubcookie_module);
 
     ap_log_rerror (PC_LOG_DEBUG, r,
-                   "pubcookie_user_hook: uri: %V auth_type: %s", &r->uri,
+                   "pubcookie_user_hook: uri: %V location: \"%V\" auth_type: %s", &r->uri, &cfg->location,
                    ap_auth_type (r));
 
     if (!ap_auth_type (r))
@@ -2505,7 +2541,7 @@ static int pubcookie_authz_hook (request_rec * r)
     if (r != r->main) /* subrequest */
         return OK;
 
-    if (0 == scfg->locations) /* server not enabled */
+    if (! scfg->locations) /* server not enabled */
         return OK;
 
     pubcookie_setup_request(r);
@@ -2664,11 +2700,12 @@ static char *
 pubcookie_set_appid (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
     ngx_pubcookie_loc_t *cfg = conf;
-    ngx_pubcookie_srv_t *scfg = ngx_http_conf_get_module_srv_conf(cf, pubcookie_module);
     ngx_str_t *value = cf->args->elts;
 
     normalize_id_string(cf->pool, &cfg->appid, &value[1]);
-    scfg->locations++; /* mark server as pubcookie-enabled */
+
+    mark_location(cf, cfg, "set_appid");
+
     return NGX_CONF_OK;
 }
 
