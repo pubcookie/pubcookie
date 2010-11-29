@@ -68,7 +68,7 @@ typedef struct
     ngx_str_t egd_socket;
     ngx_str_t login;
     /* === server part === */
-    ngx_str_t post_url;
+    ngx_str_t post_reply_url;
     ngx_str_t appsrvid;
     ngx_int_t dirdepth;
     ngx_flag_t noblank;
@@ -82,11 +82,11 @@ typedef struct
 
 typedef struct
 {
+    char *user;
+    char *auth_type;
     int failed;
     int redir_reason_no;
     int has_granting;
-    ngx_str_t user_name;
-    ngx_str_t user_full;
     char creds;
     pbc_cookie_data *cookie_data;
     char *stop_message;
