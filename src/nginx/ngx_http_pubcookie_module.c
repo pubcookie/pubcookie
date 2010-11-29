@@ -526,6 +526,25 @@ normalize_id_string (ngx_pool_t *pool, ngx_str_t *dst, ngx_str_t *src)
     dst->len = (int)(c - dst->data);
 }
 
+static char *
+join_ngx_strings (ngx_pool_t * p, char * str,
+                ngx_str_t * value, ngx_uint_t nelts, const char * joiner)
+{
+    ngx_uint_t i;
+
+    for (i = 1; i < nelts; i++) {
+        char * prev = str;
+        char * param = str2charp (p, &value[i]);
+        str = ap_pstrcat3 (p, prev, prev ? joiner : NULL, param);
+        if (!param || !str)
+            return NULL;
+        if (prev)  ap_pfree (p, prev);
+        if (param)  ap_pfree (p, param);
+    }
+
+    return str;
+}
+
 /* Debugging */
 
 static void
@@ -543,8 +562,10 @@ dump_recs (request_rec *r, pubcookie_server_rec *s, pubcookie_dir_rec *c)
             s->dirdepth, s->noblank, s->catenate, s->no_clean_creds, s->use_post, s->vitki_behind_proxy);
     dd("| oldappid=%V appid=%V appsrvid=%V",
             &c->oldappid, &c->appid, &s->appsrvid);
-    dd("| post_reply_url=%V end_session=%V addl_requests=%V accept_realms=%V",
-            &s->post_reply_url, &c->end_session, &c->addl_requests, &c->accept_realms);
+    dd("| post_reply_url=%V end_session=%V addl_requests=%s accept_realms=%s",
+            &s->post_reply_url, &c->end_session,
+            c->addl_requests ? c->addl_requests : "",
+            c->accept_realms ? c->accept_realms : "");
     dd("| crypt_alg=%d inact_exp=%d hard_exp=%d non_ssl_ok=%d session_reauth=%d",
             s->crypt_alg, c->inact_exp, c->hard_exp, c->non_ssl_ok, c->session_reauth);
     dd("| strip_realm=%d noprompt=%d",
@@ -1367,13 +1388,13 @@ static int auth_failed_handler (request_rec * r,
                  PBC_GETVAR_PRE_SESS_TOK,
                  pre_sess_tok, PBC_GETVAR_FLAG, misc_flag);
 
-    if (cfg->addl_requests.data && cfg->addl_requests.len > 0) {
+    if (cfg->addl_requests) {
         ap_log_rerror (PC_LOG_DEBUG, r,
-                       "auth_failed_handler: adding %V",
-                       &cfg->addl_requests);
+                       "auth_failed_handler: adding %s",
+                       cfg->addl_requests);
 
         g_req_contents = ap_pstrcat3 (p, g_req_contents,        /* FIXME: memory overhead */
-                                     str2charp(p, &cfg->addl_requests), NULL);
+                                     cfg->addl_requests, NULL);
     }
 
     ap_log_rerror (PC_LOG_DEBUG, r,
@@ -1793,16 +1814,15 @@ static char *pubcookie_dir_merge (ngx_conf_t *cf, void *parent, void *child)
     if (! cfg->end_session.data)
         cfg->end_session = prv->end_session;
 
-    if (prv->addl_requests.data) {
-        static ngx_str_t ampersand = ngx_string("&");
-        if (cfg->addl_requests.data)
-	        ngx_pstrcat3(cf->pool, &cfg->addl_requests,
-	                    &prv->addl_requests, &ampersand, &cfg->addl_requests);
+    if (prv->addl_requests) {
+        if (cfg->addl_requests)
+	        cfg->addl_requests = ap_pstrcat3 (cf->pool, prv->addl_requests,
+	                                            "&", cfg->addl_requests);
         else
             cfg->addl_requests = prv->addl_requests;
     }
 
-    if (! cfg->accept_realms.data)
+    if (! cfg->accept_realms)
         cfg->accept_realms = prv->accept_realms;
 
     if (cfg->keydirs && ! prv->keydirs) {
@@ -2084,7 +2104,7 @@ int pubcookie_user (request_rec * r, pubcookie_server_rec * scfg,
             /* save the full user/realm for later */
 
             /* check for acceptable realms and strip realm */
-            if ((cfg->strip_realm == 1) || (cfg->accept_realms.data != NULL)) {
+            if ((cfg->strip_realm == 1) || (cfg->accept_realms != NULL)) {
                 char *tmprealm, *tmpuser;
                 tmpuser =
                     ap_pstrdup (p, (char *) (*cookie_data).broken.user);
@@ -2103,10 +2123,10 @@ int pubcookie_user (request_rec * r, pubcookie_server_rec * scfg,
                                     (char *) (*cookie_data).broken.user);
                 }
 
-                if (cfg->accept_realms.data != NULL) {
+                if (cfg->accept_realms != NULL) {
                     int realmmatched = 0;
                     char *thisrealm;
-                    char *okrealms = str2charp (p, &cfg->accept_realms);
+                    char *okrealms = ap_pstrdup (p, cfg->accept_realms);
 
                     if (tmprealm == NULL) {
                         /* no realm to check !?!? */
@@ -2278,10 +2298,10 @@ int pubcookie_user (request_rec * r, pubcookie_server_rec * scfg,
                     ap_pstrdup (p, (char *) (*cookie_data).broken.user);
             }
 
-            if (cfg->accept_realms.data != NULL) {
+            if (cfg->accept_realms != NULL) {
                 int realmmatched = 0;
                 char *thisrealm;
-                char *okrealms = str2charp (p, &cfg->accept_realms);
+                char *okrealms = ap_pstrdup (p, cfg->accept_realms);
                 while (*okrealms && !realmmatched &&
                        (thisrealm = ap_getword_white_nc (p, &okrealms))) {
                     if (strcmp (thisrealm, tmprealm) == 0) {
@@ -2655,32 +2675,19 @@ pubcookie_set_appid (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 static char *
 pubcookie_add_request (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
-    static ngx_str_t ampersand = ngx_string("&");
     ngx_pubcookie_loc_t *cfg = conf;
-    ngx_str_t *value = cf->args->elts;
-    ngx_uint_t i;
-
-    for (i = 1; i < cf->args->nelts; i++)
-        ngx_pstrcat3(cf->pool, &cfg->addl_requests,
-                    &cfg->addl_requests, &ampersand, &value[i]);
-
-    return NGX_CONF_OK;
+    cfg->addl_requests = join_ngx_strings (cf->pool, cfg->addl_requests,
+                                        cf->args->elts, cf->args->nelts, "&");
+    return cfg->addl_requests ? NGX_CONF_OK : "Not enough memory for add_request";
 }
 
 static char *
 pubcookie_accept_realms (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
-    static ngx_str_t blank = ngx_string(" ");
     ngx_pubcookie_loc_t *cfg = conf;
-    ngx_str_t *value = cf->args->elts;
-    ngx_uint_t i;
-
-    for (i = 1; i < cf->args->nelts; i++) {
-        ngx_pstrcat3(cf->pool, &cfg->addl_requests,
-                    &cfg->addl_requests, &blank, &value[i]);
-    }
-
-    return NGX_CONF_OK;
+    cfg->accept_realms = join_ngx_strings (cf->pool, cfg->accept_realms,
+                                        cf->args->elts, cf->args->nelts, " ");
+    return cfg->accept_realms ? NGX_CONF_OK : "Not enough memory for accept_realms";
 }
 
 static char *

@@ -46,9 +46,9 @@ typedef struct {
     ngx_str_t appid;
     ngx_str_t end_session;
     ngx_int_t session_reauth;
-    ngx_str_t addl_requests;
     ngx_flag_t strip_realm;
-    ngx_str_t accept_realms;
+    char * accept_realms;
+    char * addl_requests;
     ngx_flag_t noprompt;
     ngx_array_t *keydirs;
 } ngx_pubcookie_loc_t;
