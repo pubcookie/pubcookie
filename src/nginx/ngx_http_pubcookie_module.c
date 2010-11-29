@@ -64,6 +64,7 @@
 #define pc_pool_log(p,args...) pbc_ngx_log((p)->log,PC_LOG_DEBUG,args)
 #define pc_cf_log(c,args...)   pbc_ngx_log((c)->log,PC_LOG_DEBUG,args)
 #define pc_log_log(l,args...)  pbc_ngx_log((l),PC_LOG_DEBUG,args)
+#define PPP  pbc_ngx_log((r)->connection->log,PC_LOG_WARNING,"<<< %d >>>",__LINE__);
 
 typedef ngx_pubcookie_loc_t pubcookie_dir_rec;
 typedef ngx_pubcookie_srv_t pubcookie_server_rec;
@@ -1729,7 +1730,7 @@ static int pubcookie_user_hook (request_rec * r)
         ngx_http_get_module_ctx(r, ngx_pubcookie_module);
 
     ap_log_rerror (PC_LOG_DEBUG, r,
-                   "pubcookie_user_hook: uri: %s auth_type: %s", r->uri,
+                   "pubcookie_user_hook: uri: %V auth_type: %s", &r->uri,
                    ap_auth_type (r));
 
     if (!ap_auth_type (r))
