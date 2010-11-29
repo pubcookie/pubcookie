@@ -19,6 +19,18 @@
 #define pbc_strdup(p,x) __ap_pstrdup(pool_of(p),x)
 #define ap_strdup(p,x) __ap_pstrdup(pool_of(p),x)
 
+static inline ngx_log_t * log_of (void *p)
+{
+    return (NULL == p ? NULL : (*(uint32_t *)p == PBC_SRV_SIGNATURE)
+            ? ((ngx_pubcookie_srv_t *)p)->log : ((ngx_http_request_t *)p)->connection->log);
+}
+
+static inline ngx_pool_t * pool_of (void *p)
+{
+    return (NULL == p ? NULL : (*(uint32_t *)p == PBC_SRV_SIGNATURE)
+            ? ((ngx_pubcookie_srv_t *)p)->pool : ((ngx_http_request_t *)p)->pool);
+}
+
 #define HAVE_STDARG_H
 #define HAVE_SNPRINTF
 #define HAVE_VSNPRINTF

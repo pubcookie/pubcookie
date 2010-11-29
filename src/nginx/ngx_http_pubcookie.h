@@ -33,16 +33,19 @@ typedef ngx_http_request_t pool;
  * Data types
  */
 
+#define PBC_LOC_SIGNATURE 0x0B100C10
+#define PBC_SRV_SIGNATURE 0x0B200C20
+
 /* Module configuration struct */
 typedef struct {
     uint32_t signature;
     ngx_int_t inact_exp;
     ngx_int_t hard_exp;
-    int non_ssl_ok;
+    ngx_flag_t non_ssl_ok;
     ngx_str_t oldappid; /* Added by ddj@cmu.edu on 2006/05/10 */
     ngx_str_t appid;
     ngx_str_t end_session;
-    int session_reauth;
+    ngx_int_t session_reauth;
     ngx_str_t addl_requests;
     ngx_flag_t strip_realm;
     ngx_str_t accept_realms;
@@ -92,8 +95,9 @@ typedef struct
     char *stop_message;
     int status;
     int no_cache_set;
+    char * cred_transfer;
+    int cred_transfer_len;
     ngx_str_t msg;
-    ngx_str_t cred_transfer;
     ngx_str_t app_path;
     ngx_array_t *notes;
     char *server_name_tmp;
@@ -158,27 +162,6 @@ __ap_pstrdup (ngx_pool_t *pool, const char *src)
 {
     ngx_str_t ns = { -1, (u_char *) src };
     return str2charp(pool, &ns);
-}
-
-/***********************************
- * Helpers for libpbc library
- */
-
-#define PBC_LOC_SIGNATURE 0x0B100C10
-#define PBC_SRV_SIGNATURE 0x0B200C20
-
-static inline ngx_log_t *
-log_of (void *p)
-{
-    return (NULL == p ? NULL : (*(uint32_t *)p == PBC_SRV_SIGNATURE)
-            ? ((ngx_pubcookie_srv_t *)p)->log : ((ngx_http_request_t *)p)->connection->log);
-}
-
-static inline ngx_pool_t *
-pool_of (void *p)
-{
-    return (NULL == p ? NULL : (*(uint32_t *)p == PBC_SRV_SIGNATURE)
-            ? ((ngx_pubcookie_srv_t *)p)->pool : ((ngx_http_request_t *)p)->pool);
 }
 
 /* SVN Id: $Id$ */
