@@ -2823,7 +2823,7 @@ static ngx_conf_post_t pubcookie_conf_noprompt = { pubcookie_post_noprompt };
 static const command_rec pubcookie_commands[] = {
     /* "Set the inactivity expire time for PubCookies." */
     { ngx_string("pubcookie_inactive_expire"),
-      NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      NGX_HTTP_LOC_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_num_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
       offsetof(ngx_pubcookie_loc_t, inact_exp),
@@ -2831,7 +2831,7 @@ static const command_rec pubcookie_commands[] = {
 
     /* "Set the hard expire time for PubCookies." */
     { ngx_string("pubcookie_hard_expire"),
-      NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      NGX_HTTP_LOC_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_num_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
       offsetof(ngx_pubcookie_loc_t, hard_exp),
@@ -2937,7 +2937,7 @@ static const command_rec pubcookie_commands[] = {
 
     /* "Set the name of the application." */
     { ngx_string("pubcookie_app_id"),
-      NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      NGX_HTTP_LOC_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
       pubcookie_set_appid,
       NGX_HTTP_LOC_CONF_OFFSET,
       offsetof(ngx_pubcookie_loc_t, appid),
@@ -2961,7 +2961,7 @@ static const command_rec pubcookie_commands[] = {
 
     /* "Force reauthentication for new sessions with specified timeout" */
     { ngx_string("pubcookie_session_reauth"),
-      NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      NGX_HTTP_LOC_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
       pubcookie_set_session_reauth,
       NGX_HTTP_LOC_CONF_OFFSET,
       offsetof(ngx_pubcookie_loc_t, session_reauth),
@@ -2969,7 +2969,7 @@ static const command_rec pubcookie_commands[] = {
 
     /* "End application session and possibly login session" */
     { ngx_string("pubcookie_end_session"),
-      NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      NGX_HTTP_LOC_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_str_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
       offsetof(ngx_pubcookie_loc_t, end_session),
@@ -2977,7 +2977,7 @@ static const command_rec pubcookie_commands[] = {
 
     /* "Send the following options to the login server along with authentication requests" */
     { ngx_string("pubcookie_add_request"),
-      NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
+      NGX_HTTP_LOC_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_MAIN_CONF|NGX_CONF_1MORE,
       pubcookie_add_request,
       NGX_HTTP_LOC_CONF_OFFSET,
       offsetof(ngx_pubcookie_loc_t, addl_requests),
@@ -2985,7 +2985,7 @@ static const command_rec pubcookie_commands[] = {
 
     /* "Only accept realms in this list" */
     { ngx_string("pubcookie_accept_realm"),
-      NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
+      NGX_HTTP_LOC_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_MAIN_CONF|NGX_CONF_1MORE,
       pubcookie_accept_realms,
       NGX_HTTP_LOC_CONF_OFFSET,
       offsetof(ngx_pubcookie_loc_t, accept_realms),
@@ -2993,7 +2993,7 @@ static const command_rec pubcookie_commands[] = {
 
     /* "Strip the realm (and set the REMOTE_REALM envirorment variable)" */
     { ngx_string("pubcookie_strip_realm"),
-      NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
+      NGX_HTTP_LOC_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_MAIN_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
       offsetof(ngx_pubcookie_loc_t, strip_realm),
@@ -3001,7 +3001,7 @@ static const command_rec pubcookie_commands[] = {
 
     /* "Specify on-demand pubcookie directives." */
     { ngx_string("pubcookie_on_demand"),
-      NGX_HTTP_LOC_CONF|NGX_CONF_TAKE2,
+      NGX_HTTP_LOC_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE2,
       ngx_conf_set_keyval_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
       offsetof(ngx_pubcookie_loc_t, keydirs), /* FIXME */
@@ -3009,7 +3009,7 @@ static const command_rec pubcookie_commands[] = {
 
     /* "Do not prompt for id and password if not already logged in." */
     { ngx_string("pubcookie_no_prompt"),
-      NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
+      NGX_HTTP_LOC_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_MAIN_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
       offsetof(ngx_pubcookie_loc_t, noprompt),
@@ -3033,7 +3033,7 @@ static const command_rec pubcookie_commands[] = {
 
     /* "Set post response URL. Def = /PubCookie.reply" */
     { ngx_string("pubcookie_post"),
-      NGX_HTTP_LOC_CONF|NGX_CONF_NOARGS,
+      NGX_HTTP_LOC_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_MAIN_CONF|NGX_CONF_NOARGS,
       pubcookie_set_post_url,
       NGX_HTTP_SRV_CONF_OFFSET,
       offsetof(ngx_pubcookie_srv_t, post_reply_url),
@@ -3067,7 +3067,7 @@ static const command_rec pubcookie_commands[] = {
 */
     /* "Set the non_ssl_ok." */
     { ngx_string("pubcookie_no_ssl_ok"),
-      NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
+      NGX_HTTP_LOC_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_MAIN_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
       offsetof(ngx_pubcookie_loc_t, non_ssl_ok),
