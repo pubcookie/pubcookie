@@ -94,7 +94,7 @@ typedef struct
     pbc_cookie_data *cookie_data;
     char *stop_message;
     int status;
-    int no_cache_set;
+    int nocache_sent;
     char * cred_transfer;
     int cred_transfer_len;
     ngx_str_t msg;
