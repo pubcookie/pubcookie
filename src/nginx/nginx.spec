@@ -13,16 +13,19 @@
 %define nginx_webroot   %{nginx_datadir}/html
 
 #<VITKI>#
-%define vitver  08
+%define vitver  09
 %define rhver   %((head -1 /etc/redhat-release 2>/dev/null || echo 0) | tr -cd 0-9 | cut -c1)
 %define relver  vitki.%{vitver}%{?dist}%{!?dist:.el%{rhver}}
 %define debug_package %{nil}
 %define _with_progress 1
 %define _without_slowfs 1
 %define _without_echo 1
-%define _without_pubcookie 1
-%define _with_pbc_trunk 1
+%define _with_pubcookie 1
+%define _without_pbc_trunk 1
+%define _with_ipguard 1
+%define _without_ipg_trunk 1
 %define pubcookie_trunk_dir /root/pubcookie/trunk
+%define ipguard_trunk_dir /root/ipguard
 #</VITKI>#
 
 Name:           nginx
@@ -67,6 +70,7 @@ Source31:   masterzen-nginx-upload-progress-module-0.8.1-0.tar.gz
 Source32:   ngx_slowfs_cache-1.5.tar.gz
 Source33:   agentzh-echo-nginx-module-0.34.tar.gz
 Source34:   nginx_http_pubcookie-0.8.52-3.3.4a-0.1-vitki.tar.gz
+Source35:   nginx_http_ipguard-0.8.52-0.6-vitki.tar.gz
 Patch31:    nginx-dummy-try-files-0.8.52.patch
 #</VITKI>#
 
@@ -98,6 +102,7 @@ tar xvzf %{SOURCE5}
 %{?_with_slowfs:    tar xvzf %{SOURCE32} }
 %{?_with_echo:      tar xvzf %{SOURCE33} }
 %{?_with_pubcookie: mkdir nginx_pubcookie ; cd nginx_pubcookie ; tar xvzf %{SOURCE34} ; cd .. }
+%{?_with_ipguard:   mkdir nginx_ipguard   ; cd nginx_ipguard   ; tar xvzf %{SOURCE35} ; cd .. }
 #</VITKI>#
 
 %build
@@ -139,7 +144,9 @@ export DESTDIR=%{buildroot}
 %{?_with_slowfs:    --add-module=%{_builddir}/nginx-%{version}/%(x=`basename %{SOURCE32}`; echo ${x%.tar.gz}) } \
 %{?_with_echo:      --add-module=%{_builddir}/nginx-%{version}/%(x=`basename %{SOURCE33}`; echo ${x%.tar.gz}) } \
 %{?_with_pubcookie: --add-module=%{_builddir}/nginx-%{version}/nginx_pubcookie/src/nginx } \
-%{?_with_pbc_trunk: --add-module=%{pubcookie_trunk_dir}/src/nginx }
+%{?_with_pbc_trunk: --add-module=%{pubcookie_trunk_dir}/src/nginx } \
+%{?_with_ipguard:   --add-module=%{_builddir}/nginx-%{version}/nginx_ipguard/nginx } \
+%{?_with_ipg_trunk: --add-module=%{ipguard_trunk_dir}/nginx }
 %{?!VITKI:}
 make
 
@@ -233,6 +240,9 @@ fi
 
 
 %changelog
+* Tue Dec  7 2010 Vitki <vitki@vitki.net> - 0.8.52-09
+- Add support for IPguard authentication check
+
 * Sat Nov 27 2010 Vitki <vitki@vitki.net> - 0.8.52-08
 - Add support for Pubcookie 3.3.4a authentication, module v.0.1
 - Location name of "-" in try_files avoids disk access and causes unconditional jump
