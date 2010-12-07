@@ -22,8 +22,8 @@
 %define _without_echo 1
 %define _with_pubcookie 1
 %define _without_pbc_trunk 1
-%define _with_ipguard 1
-%define _without_ipg_trunk 1
+%define _without_ipguard 1
+%define _with_ipg_trunk 1
 %define pubcookie_trunk_dir /root/pubcookie/trunk
 %define ipguard_trunk_dir /root/ipguard
 #</VITKI>#
