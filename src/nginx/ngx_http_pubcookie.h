@@ -124,7 +124,7 @@ extern int pubcookie_super_debug;
 #undef  PBC_LOG_AUDIT
 
 #define PBC_LOG_ERROR         NGX_LOG_ERR
-#define PBC_LOG_DEBUG_LOW     NGX_LOG_INFO
+#define PBC_LOG_DEBUG_LOW     NGX_LOG_DEBUG
 #define PBC_LOG_DEBUG_VERBOSE NGX_LOG_DEBUG
 #define PBC_LOG_DEBUG_OUTPUT  NGX_LOG_DEBUG
 #define PBC_LOG_AUDIT         NGX_LOG_DEBUG
