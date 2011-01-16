@@ -670,7 +670,7 @@ pubcookie_finish_request (ngx_http_request_t *r)
     msg = rr->msg.data;
     len = ngx_strlen(msg);
 
-    r->headers_out.status = rr->status ? rr->status : NGX_HTTP_BAD_REQUEST;
+    r->headers_out.status = rr->status ? rr->status : NGX_HTTP_OK;
     r->headers_out.content_length_n = len;
     r->headers_out.last_modified_time = r->start_sec;
 
@@ -1240,6 +1240,7 @@ static int stop_the_show (request_rec * r, pubcookie_server_rec * scfg,
 
     ap_rprintf (r, stop_html, get_server_admin(r),
                 rr->stop_message ? rr->stop_message : "");
+    rr->status = NGX_HTTP_BAD_REQUEST;
 
     return (OK);
 
@@ -1562,6 +1563,7 @@ static int auth_failed_handler (request_rec * r,
 #ifdef REDIRECT_IN_HEADER
 /* warning, this will break some browsers */
         ap_rprintf (r, nullpage_html);
+        rr->status = HTTP_MOVED_TEMPORARILY;
 #else
         ap_rprintf (r, redirect_html, refresh);
 #endif
@@ -1985,6 +1987,7 @@ static int pubcookie_user_hook (request_rec * r)
             ap_log_rerror (PC_LOG_DEBUG, r, " .. user_hook: bad user");
             flush_headers (r);
             ap_rprintf (r, "Unauthorized user.");
+            rr->status = HTTP_UNAUTHORIZED;
             return DONE;
         }
         auth_failed_handler (r, scfg, cfg, rr);
@@ -2794,7 +2797,7 @@ pubcookie_set_no_blank (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 }
 
 /**
- * used to give more debugging, does nothing now
+ * gives more debugging
  * @param cmd - command record
  * @param mconfig - module configuration
  * @param f - int
