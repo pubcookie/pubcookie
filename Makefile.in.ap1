@@ -4,7 +4,7 @@
 #
 # @configure_input@
 # 
-# $Id: Makefile.in.ap1,v 1.4 2004/05/03 21:50:24 willey Exp $
+# $Id: Makefile.in.ap1,v 1.4 2004-05-03 21:50:24 willey Exp $
 
 prefix=@prefix@
 srcdir=@srcdir@

@@ -47,7 +47,7 @@
 
 #define PBC_VERSION_MAJOR "3"
 #define PBC_VERSION_MINOR "3"
-#define PBC_VERSION_PATCH "4a"
+#define PBC_VERSION_PATCH "5"
 
 /***************************************************************************
  * CAUTION!  This file (pbc_version.h) is automatically generated from
@@ -64,6 +64,6 @@
  * by configure when it is run again!
  *************************************************************************** */
 
-#define PBC_VERSION_STRING "3.3.4a"
+#define PBC_VERSION_STRING "3.3.5"
 
 #endif /* !PUBCOOKIE_VERSION */

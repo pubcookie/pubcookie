@@ -330,8 +330,9 @@ void CPBC_PropSheet::ReadSelectedValue() {
 #	define DIRECTIVE_INIT
 #	include "pbc_directives.h"
 #	undef DIRECTIVE_INIT
+	int i;
 
-	for (int i=0;i<NUM_DIRECTIVES;i++) {
+	for (i=0;i<NUM_DIRECTIVES;i++) {
 		GetEffectiveValue(i);
 	}
 

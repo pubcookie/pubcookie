@@ -1,0 +1,7 @@
+This is the Pubcookie relay directory. 
+
+Refer to the Pubcookie "Apache Module Installation Guide" 
+(and its "Cross-Domain Relay Configuration" section) for 
+Pubcookie relay setup and use instructions:
+
+http://pubcookie.org/docs/install-mod_pubcookie.html

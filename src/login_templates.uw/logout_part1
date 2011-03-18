@@ -1,0 +1,20 @@
+Pragma: No-Cache
+Cache-Control: no-store, no-cache, must-revalidate
+Expires: Sat, 1 Jan 2000 01:01:01 GMT
+Content-Type: text/html
+
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2//EN">
+<HTML>
+<HEAD>
+<TITLE>UW NetID Weblogin</TITLE>
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF">
+
+<CENTER>
+
+<TABLE CELLPADDING=0 CELLSPACING=0 BORDER=0 WIDTH=580>
+<TR>
+<TD VALIGN="MIDDLE">
+<IMG SRC="/images/login/weblogin.gif" ALT="UW NetID Weblogin" height="57" width="198">
+

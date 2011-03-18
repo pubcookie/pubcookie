@@ -1,0 +1,20 @@
+--- mod_pubcookie-3.0-i386_linux24/src/verify_kerberos5.c	Wed Jun  4 04:13:29 2003
++++ mod_pubcookie-3.0-i386_linux24-su/src/verify_kerberos5.c	Mon Aug  4 23:30:13 2003
+@@ -408,6 +408,7 @@
+     krb5_principal auth_user;
+     krb5_creds creds;
+     krb5_get_init_creds_opt opts;
++    krb5_addresses no_addrs;
+     int result = -1;
+     char tfname[40];
+     char *realm = NULL;
+@@ -480,6 +481,9 @@
+         return 1;
+ 
+     krb5_get_init_creds_opt_init(&opts);
++    no_addrs.len = 0;
++    no_addrs.val = NULL;
++    krb5_get_init_creds_opt_set_address_list(&opts,&no_addrs);
+     krb5_get_init_creds_opt_set_tkt_life(&opts, KRB5_DEFAULT_LIFE);
+     if (krb5_get_init_creds_password(context, &creds, 
+ 				     auth_user, localpwd, NULL, NULL, 

@@ -1,0 +1,28 @@
+                 <br>
+                 <br>
+               </td>
+             </tr>
+             <tr>
+               <td bgcolor="#DDDDDD" align="left">
+    Now that you have identified yourself to the <STRONG>WebISO</STRONG>
+    service, you can log in to other WebISO protected web sites
+    without having to re-enter your password.
+                <br>
+                <br>
+               </td>
+             </tr>
+             <tr>
+               <td bgcolor="#DDDDDD" align="left">
+    To log out of the  <STRONG>WebISO</STRONG> service, go to
+    <a href="/logout.cgi">https://webiso.andrew.cmu.edu/logout.cgi</a>.
+               <br>
+               </td>
+             </tr>
+           </table>
+         </td>
+       </tr>
+       <br>
+      </table>
+    </span>
+  </body>
+</html>

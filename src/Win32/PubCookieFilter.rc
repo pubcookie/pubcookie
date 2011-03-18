@@ -53,8 +53,8 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 3,3,4a,0
- PRODUCTVERSION 3,3,4a,0
+ FILEVERSION 3,3,5,0
+ PRODUCTVERSION 3,3,5,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -69,15 +69,15 @@ BEGIN
     BEGIN
         BLOCK "040904b0"
         BEGIN
-            VALUE "Comments", "Pubcookie 3.3.4a"
+            VALUE "Comments", "Pubcookie 3.3.5"
             VALUE "CompanyName", "University of Washington"
             VALUE "FileDescription", "PubCookieFilter ISAPI Filter"
-            VALUE "FileVersion", "3, 3, 4a, 0"
+            VALUE "FileVersion", "3, 3, 5, 0"
             VALUE "InternalName", "PubCookieFilter"
             VALUE "LegalCopyright", "Copyright 2000-2007"
             VALUE "OriginalFilename", "PubCookieFilter.DLL"
             VALUE "ProductName", "PubCookieFilter ISAPI Filter"
-            VALUE "ProductVersion", "3, 3, 4a, 0"
+            VALUE "ProductVersion", "3, 3, 5, 0"
         END
     END
     BLOCK "VarFileInfo"

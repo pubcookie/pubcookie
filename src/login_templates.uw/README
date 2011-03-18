@@ -1,0 +1,37 @@
+*** some files contain HTTP server headers 
+*** editing them with visual tools looses or garbles them
+
+Most files here begin with QUOTE
+Pragma: No-Cache                                
+Cache-Control: no-store, no-cache, must-revalidate 
+Expires: Sat, 1 Jan 2000 01:01:01 GMT                        
+Content-Type: text/html                                       
+                                                                  
+ENDQUOTE
+
+Note the extra blank line after the headers.  These are HTTP headers.
+
+
+*** some files are snipits of html the login program stiches together
+*** editing them with a tool will added <html> and <body> tags that
+*** will conflict
+
+These files taken together are the login screen the user sees.  There are two %s in them.
+Thats to print out the status info (like password incorrect try again sort of stuff).
+Between part1 and part2 the login program sticks in a pile of hidden fields so it can
+keep track of its private info about this request.  So part1 needs to end in the form
+that gets submited on login.  part2 is the rest of the file
+
+login_part1
+login_part2
+
+This file is used when a login is successfull and we need to redirect back to the client web server.
+nonpost_redirect
+
+If the login program is giving up this if for the error messages.  You shouldnt see this normaly (as normnal errors go back to the login page).  If you want to see what it looks like then create a new browser (not a new window but start a browser from scratch so it has no pubcookie cookies).  Then go to https://blackboard-login.andrew.cmu.edu you will get an error because it has no idea how you got there.
+
+notok_part1
+notok_part2
+
+
+*** still to come handling of posts from client web servers ***

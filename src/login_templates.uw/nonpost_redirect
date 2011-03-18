@@ -1,0 +1,19 @@
+Pragma: No-Cache
+Cache-Control: no-store, no-cache, must-revalidate
+Expires: Sat, 1 Jan 2000 01:01:01 GMT
+Content-Type: text/html
+
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
+<html>
+  <head>
+    <!-- don't use the window.location.replace("%s"); -- -->
+    <meta http-equiv="Refresh" content="%s;URL=%s">
+    <title>pubcookie redirect</title>
+  </head>
+
+  <body bgcolor="white">
+    <!--redirecting to %s-->
+  </body>
+</html>
+
+

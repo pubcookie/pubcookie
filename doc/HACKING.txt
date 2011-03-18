@@ -43,5 +43,5 @@ server (s) record handy. Note: ap_log_rerror() logs the client ip.
     AP_LOG_INFO  - normal logging of redirects and the like
     AP_LOG_DEBUG - super-debug or other really verbose crap
 
-$Id: HACKING.txt,v 1.3 2004/12/21 17:16:45 willey Exp $
+$Id: HACKING.txt,v 1.3 2004-12-21 17:16:45 willey Exp $
 

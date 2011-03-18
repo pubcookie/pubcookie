@@ -1,4 +1,4 @@
-#    $Id: Makefile.in,v 1.4 2004/06/16 17:26:30 fox Exp $
+#    $Id: Makefile.in,v 1.4 2004-06-16 17:26:30 fox Exp $
 
 #You may wish to add -DNO_UNISTD and -DNO_SYSTEM to CFLAGS if
 #your system lacks the /usr/include/unistd.h header file

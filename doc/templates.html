@@ -1,0 +1,183 @@
+<html>
+
+<head>
+<title>Pubcookie Login CGI Template Reference</title>
+<link rel="stylesheet" href="pubcookie.css" type="text/css">
+</head>
+
+<body>
+
+<h1>Pubcookie Login CGI Template Reference</h1>
+
+<p>This is the authoritative reference for the HTML templates used
+by the Pubcookie login cgi.</p>
+
+<p>Note: The filename of each template can be set in your config file,
+if you desire alternative filenames. The name for each config variable
+is <tt>tmpl_{default_file_name}</tt>. For example, <tt>tmpl_login</tt>
+is the variable that controls the filename of the <tt>login</tt>
+template.</p>
+
+<dl>
+
+<dt><a name="copyright">copyright</a></dt>
+<dd>Your copyright string. Only used on redirect with POST page.</dd>
+
+<dt><a name="error">error</a></dt>
+<dd>Template displayed when there is an internal error.</dd>
+
+<dt><a name="form_expired">form_expired</a></dt>
+<dd>The error displayed when the user sits on the login page
+too long before authenticating.</dd>
+
+<dt><a name="login">login</a></dt>
+<dd>The template for the login page. The main login page, with
+automatic variable substitutions for: the login server URL, the reason
+for the redirect (pulled from various <tt>login_*</tt> templates), the
+user input field (also pulled from other templates), hidden fields
+maintaining state information, GetCred hidden fields, and version
+string.</dd>
+
+<dt><a name="login_bad_auth">login_bad_auth</a></dt>
+<dd>The error displayed when authentication failed. File containing
+HTML snippet to display on the login page when authentication
+fails.</dd>
+
+<dt><a name="login_bad_auth_static_user">login_bad_auth_static_user</a></dt>
+<dd>The error displayed when authentication failed and the user
+input field should be static.</dd>
+
+<dt><a name="login_cache_creds_wrong">login_cache_creds_wrong</a></dt>
+<dd>File containing HTML snippet to display on the login page when the
+application requests credentials that are different from those in use
+already by the weblogin service.  The error displayed when the
+single-signon credential is not the type that the application is
+requesting. (Rarely seen.)</dd>
+
+<dt><a name="login_expired">login_expired</a></dt>
+<dd>The error displayed when the login cookie has expired.</dd>
+
+<dt><a name="login_nolcookie">login_nolcookie</a></dt>
+<dd>The error displayed when the user has no login cookie or has an
+invalid one.</dd>
+
+<dt><a name="login_pass_form_field">login_pass_form_field</a></dt>
+<dd>The password input field snippet.</dd>
+
+<dt><a name="login_pinit">login_pinit</a></dt>
+<dd>The login message displayed when the user visits the login cgi 
+directly (i.e., without a granting request cookie), rather than being 
+redirected from an application.</dd>
+
+<dt><a name="login_reauth">login_reauth</a></dt>
+<dd>The error displayed when the application has requested that the
+user reauthenticate. File containing HTML snippet to display on the
+login page when the application requests reauthentication.</dd>
+
+<dt><a name="login_unauth_grant">login_unauth_grant</a></dt>
+<dd>The error displayed when there is no authorizing host key in the 
+keystore for the application server.</dd>
+
+<dt><a name="login_user_form_field">login_user_form_field</a></dt>
+<dd>The user input field.</dd>
+
+<dt><a name="login_user_hidden">login_user_hidden</a></dt>
+<dd>The hidden user input field.</dd>
+
+<dt><a name="login_user_static">login_user_static</a></dt>
+<dd>The static user field for reauthentication.</dd>
+
+<dt><a name="logo">logo</a></dt>
+<dd>HTML that includes your logo. Only used on redirect with POST
+page.</dd>
+
+<dt><a name="logout_already_weblogin">logout_already_weblogin</a></dt>
+<dd>The logout response when the user has already logged out of 
+the login server.</dd>
+
+<dt><a name="logout_app">logout_app</a></dt>
+<dd>The generic logout response when the user logs out of an 
+application that has no customized logout message.</dd>
+
+<dt><a name="logout_app_custom">logout_app_custom</a></dt>
+<dd>The logout response text that wraps customized logout message.</dd>
+
+<dt><a name="logout_part1">logout_part1</a></dt>
+<dd>The top part of the logout response page.</dd>
+
+<dt><a name="logout_part2">logout_part2</a></dt>
+<dd>The bottom part of the logout response page.</dd>
+
+<dt><a name="logout_postscript_still_others">logout_postscript_still_others</a></dt>
+<dd>The logout response warning that sessions may remain open even 
+though the user just logged out of a specific application or the 
+login server.</dd>
+
+<dt><a name="logout_postscript_still_weblogin">logout_postscript_still_weblogin</a></dt>
+<dd>The logout response warning that the session with the login 
+server remains open.</dd>
+
+<dt><a name="logout_still_known">logout_still_known</a></dt>
+<dd>The status or logout response text that displays the userid tied 
+to the login session.</dd>
+
+<dt><a name="logout_still_weblogin">logout_still_weblogin</a></dt>
+<dd>The status or logout response text that reminds the user they're
+still logged and under what userid.</dd>
+
+<dt><a name="logout_time_remaining">logout_time_remaining</a></dt>
+<dd>The status or logout response text that displays the time 
+remaining until the login cookie expires.</dd>
+
+<dt><a name="logout_weblogin">logout_weblogin</a></dt>
+<dd>The logout response text displayed when application logout also
+clears the login cookie.</dd>
+
+<dt><a name="nonpost_redirect">nonpost_redirect</a></dt>
+<dd>Template for the redirect back to the app after login. The redirect
+page back to the target. The use of script-no-script tags with
+<tt>window.location.replace</tt> (requires JavaScript 1.1) doesn't work
+well with all older browsers (e.g. Netscape 4.x); for best
+compatibility just use meta-refresh by itself, without the
+script-no-script tags.</dd>
+
+<dt><a name="notok">notok</a></dt>
+<dd>Base template for rare occasions where things aren't okay.</dd>
+
+<dt><a name="notok_badagent">notok_badagent</a></dt>
+<dd>The response text added when things aren't okay with the browser.</dd>
+
+<dt><a name="notok_form_multipart">notok_form_multipart</a></dt>
+<dd>The response text added when things aren't okay because an
+unsupported <tt>multipart/form-data</tt> request was made.</dd>
+
+<dt><a name="notok_generic">notok_generic</a></dt>
+<dd>The generic response text added when things aren't okay.</dd>
+
+<dt><a name="notok_need_ssl">notok_need_ssl</a></dt>
+<dd>The response text added when things aren't okay because SSL is
+required.</dd>
+
+<dt><a name="pinit_response1">pinit_response1</a></dt>
+<dd>The top part of the login response template displayed after
+a direct attempt to authenticate to the login server.</dd>
+
+<dt><a name="pinit_response2">pinit_response2</a></dt>
+<dd>The bottom part of the login response template displayed
+after a direct attempt to authenticate to the login server.</dd>
+
+<dt><a name="status">status</a></dt>
+<dd>The template for the status page displayed when the user goes to
+the login server directly. The status page displaying SSO time
+remaining, with automatic variable substitutions for: refresh headers,
+the user name, and time remaining.</dd>
+
+<dt><a name="welcome_back">welcome_back</a></dt>
+<dd>The login response text displayed after successful authentication 
+on a direct request to the login server.</dd>
+
+</dl>
+
+</body>
+</html>
+

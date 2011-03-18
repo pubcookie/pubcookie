@@ -1,0 +1,5 @@
+set -x
+aclocal
+autoconf
+automake --foreign --add-missing --ignore-deps
+
