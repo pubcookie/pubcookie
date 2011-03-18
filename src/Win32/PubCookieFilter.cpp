@@ -48,8 +48,12 @@ extern "C"
 
 }
 
+
+
 #include "html.h"
+
 #include "keys.h"
+
 
 #define HDRSIZE 56
 #define MAX_BUFFER 4096
@@ -57,7 +61,8 @@ extern "C"
 #define zeroterm(str,len) (str[(len)-1]='\0')
 
 
-static char *encode_get_args (pubcookie_dir_rec *p, char *in, char *buf)
+
+static char *encode_get_args (pubcookie_dir_rec *p, char *in, char *buf)
 {
     int na = 0;
     char *enc, *s;
@@ -264,6 +269,10 @@ struct security_context_s {
 };
 
 security_context *default_context;  //Read-only after init
+static HANDLE *lock_cs; // For multithreading
+void win32_locking_callback(int, int, const char *, int);
+void OpensslThreadInit(pubcookie_dir_rec *);
+void OpensslThreadCleanup();
 
 VOID filterlog(pubcookie_dir_rec *p, int loglevel, const char *format, ...) {
 	char source[HDRSIZE];
@@ -494,6 +503,7 @@ int Add_Post_Data(HTTP_FILTER_CONTEXT* pFC, unsigned char* greq) {
 	pFC->ServerSupportFunction(pFC,SF_REQ_SEND_RESPONSE_HEADER,
 		"200 OK",NULL,NULL);
 
+
 	snprintf(szBuff, PBC_4K + 1000, "<html>\r\n"
 					" <body onLoad=\"document.relay.submit()\">\r\n"
 					"  <form method=post action=\"%s\" name=relay>\r\n\r\n"
@@ -515,6 +525,7 @@ int Add_Post_Data(HTTP_FILTER_CONTEXT* pFC, unsigned char* greq) {
 	pFC->WriteClient (pFC, szBuff, &dwBuffSize, 0);
 
 	return OK;
+
 
 }
 
@@ -546,10 +557,49 @@ BOOL Pubcookie_Init ()
 		return FALSE;
 	}
 
+	OpensslThreadInit(p);
+	
 	free(p);
     return TRUE;
 
 }  /* Pubcookie_Init */
+
+// set up callback for openssl multithreading
+// Taken from openssl/crypto/thread/mttest.c
+void OpensslThreadInit(pubcookie_dir_rec *p)
+{
+	int i;
+	lock_cs = (HANDLE *)pbc_malloc(p, CRYPTO_num_locks() * sizeof(HANDLE));
+	for(i=0; i < CRYPTO_num_locks(); i++)
+	{
+		lock_cs[i] = CreateMutex(NULL, FALSE, NULL);
+	}
+	CRYPTO_set_locking_callback((void (*)(int, int, const char *, int)) win32_locking_callback);
+}
+
+void OpensslThreadCleanup()
+{
+	int i;
+
+	CRYPTO_set_locking_callback(NULL);
+	for(i = 0; i < CRYPTO_num_locks(); i++)
+		CloseHandle(lock_cs[i]);
+	//pbc_free(p, lock_cs);
+	free(lock_cs);
+}
+
+// Openssl needs this or things will break in odd places.
+void win32_locking_callback(int mode, int type, const char *file, int line)
+{
+	if (mode & CRYPTO_LOCK)
+	{
+		WaitForSingleObject(lock_cs[type],INFINITE);
+	}
+	else
+	{
+		ReleaseMutex(lock_cs[type]);
+	}
+}
 
 // 'X' out the pubcookie cookies so the web page can't see them.  
 //  Not used.  Xed out cookies cause problems with pubcookie logic.
@@ -2615,6 +2665,7 @@ BOOL WINAPI TerminateFilter (DWORD dwFlags)
 
 	syslog(LOG_INFO, "\nPBC_TerminateFilter Called \n");
 
+	OpensslThreadCleanup();
 	WSACleanup();
 
 	return TRUE;
@@ -2622,86 +2673,156 @@ BOOL WINAPI TerminateFilter (DWORD dwFlags)
 }  /* TerminateFilter */
 
 BOOL WINAPI TerminateExtension(DWORD dwFlags)
+
 {
+
 	syslog(LOG_INFO, "\nPBC_TerminateExtension Called \n");
 
+
+
 	return TRUE;
+
 }
+
 
 BOOL SendHttpHeaders(EXTENSION_CONTROL_BLOCK *pECB, LPCSTR pszStatus, LPCSTR pszHeaders)
+
 {
+
 	HSE_SEND_HEADER_EX_INFO header_ex_info;
 
+
+
 	header_ex_info.pszStatus = pszStatus;
+
 	header_ex_info.pszHeader = pszHeaders;
+
 	header_ex_info.cchStatus = strlen(pszStatus);
+
 	header_ex_info.cchHeader = strlen(pszHeaders);
+
 	header_ex_info.fKeepConn = FALSE;
 
+
+
 	return pECB->ServerSupportFunction(pECB->ConnID, HSE_REQ_SEND_RESPONSE_HEADER_EX, &header_ex_info, NULL, NULL);
+
 }
 
+
 BOOL WINAPI GetExtensionVersion(OUT HSE_VERSION_INFO *pVer)
+
 {
+
 	// set version to httpext.h version constants
+
 	
+
 	pVer->dwExtensionVersion = MAKELONG(HSE_VERSION_MINOR, HSE_VERSION_MAJOR);
+
+
 
 	lstrcpyn((LPSTR) pVer->lpszExtensionDesc, "Pubcookie Form Extension", HSE_MAX_EXT_DLL_NAME_LEN);
 
+
+
 	return TRUE;
+
 }       
 
+
 void output_error_page(EXTENSION_CONTROL_BLOCK *pECB) {
+
+
 
    // syslog(LOG_WARN,"Extension sent error page");  //  Access issues in IIS6
 
    SendHttpHeaders(pECB, "200 OK", "Content-type: text/html\r\n\r\n");
 
+
    //output page
+
    WriteString(pECB,"<HTML>\r\n");
+
    WriteString(pECB,"<HEAD>\r\n");
+
    WriteString(pECB,"<title>A problem has occurred</title>\r\n");
+
    WriteString(pECB,"</HEAD>\r\n");
+
    WriteString(pECB,"<BODY bgcolor=\"#ffffff\">\r\n");
+
    WriteString(pECB,"<h1>A problem has occurred or you have reached this page in error</H1>\r\n");
+
    WriteString(pECB,"</BODY>\r\n");
+
    WriteString(pECB,"</HTML>\r\n");
+
 }
 
+
+
 void output_debug_page(EXTENSION_CONTROL_BLOCK *pECB, const char *msg) {
+
    char sztmpstr[MAX_BUFFER];
+
 
    SendHttpHeaders(pECB, "200 OK", "Content-type: text/html\r\n\r\n");
 
+
    //output page
+
    WriteString(pECB,"<HTML>\r\n");
+
    WriteString(pECB,"<HEAD>\r\n");
+
    WriteString(pECB,"<title>Debug Message</title>\r\n");
+
    WriteString(pECB,"</HEAD>\r\n");
+
    WriteString(pECB,"<BODY bgcolor=\"#ffffff\">\r\n");
+
    snprintf(sztmpstr,MAX_BUFFER,"<h1>%s</H1>\r\n",msg);
+
    zeroterm(sztmpstr,MAX_BUFFER);
    WriteString(pECB,sztmpstr);
+
    WriteString(pECB,"</BODY>\r\n");
+
    WriteString(pECB,"</HTML>\r\n");
+
 }
 
 
+
+
+
 /* Requests from an application will have a granting request
+
    and possibly post data.  Relay these to the login server. 
+
    
+
    This function is obsolete.  Filter will initiate POST 
+
    for granting request */
+
    
+
 void relay_granting_request(EXTENSION_CONTROL_BLOCK *pECB, pubcookie_dir_rec *p, char *greq)
+
 {
+
    char *post=NULL;
+
    char httpheader[START_COOKIE_SIZE+256];
    char sztmpstr[MAX_BUFFER];
+
    DWORD dwBufferSize = sizeof sztmpstr;
 
+
    // Send HTTP headers and clear granting reqest cookie
+
    snprintf(httpheader, START_COOKIE_SIZE+256, "Set-Cookie: %s=%s; domain=%s; path=/; expires=%s; secure\r\nContent-type: text/html\r\n\r\n", 
 			PBC_G_REQ_COOKIENAME,
 			PBC_CLEAR_COOKIE,
@@ -2709,51 +2830,95 @@ void relay_granting_request(EXTENSION_CONTROL_BLOCK *pECB, pubcookie_dir_rec *p,
 			EARLIEST_EVER);
    zeroterm(httpheader, START_COOKIE_SIZE+256);
 
+
    SendHttpHeaders(pECB, "200 OK", httpheader);
+
    WriteString(pECB,"<html>\r\n");
+
    WriteString(pECB,"<body onLoad=\"document.relay.submit()\">\r\n");
 
+
+
    snprintf(sztmpstr,MAX_BUFFER,"<form method=post action=\"%s\" name=relay>\r\n\r\n",p->Login_URI);
+
    zeroterm(sztmpstr,MAX_BUFFER);
    WriteString(pECB,sztmpstr);
+
    
+
    snprintf(sztmpstr,MAX_BUFFER,"<input type=hidden name=pubcookie_g_req value=\"%s\">\r\n",greq);
+
    zeroterm(sztmpstr,MAX_BUFFER);
    WriteString(pECB,sztmpstr);
+
    
+
   // snprintf(sztmpstr,MAX_BUFFER,"<input type=hidden name=post_stuff value=\"%s\">\r\n",post);
+
   // WriteString(pECB,sztmpstr);
+
    
+
    snprintf(sztmpstr,MAX_BUFFER,"<input type=hidden name=relay_url value=\"%s\">\r\n\r\n", p->Relay_URI);
+
    zeroterm(sztmpstr,MAX_BUFFER);
    
+
    WriteString(pECB,sztmpstr);
+
    WriteString(pECB,"<noscript>\r\n");
+
    WriteString(pECB,"<p align=center>You do not have Javascript turned on,\r\n");
+
    WriteString(pECB,"please click the button to continue.\r\n");
+
    WriteString(pECB,"<p align=center> <input type=submit name=go value=\"Continue\">\r\n");
+
    WriteString(pECB,"</noscript>\r\n\r\n");
+
    WriteString(pECB,"</form>\r\n");
+
    WriteString(pECB,"</body>\r\n");
+
    WriteString(pECB,"</html>\r\n");
+
 }
+
+
+
 
 
 /* Requests from the login server will have a granting reply
+
    and post data.  Relay these to the application. */
 
 
+
+
+
 static int need_area(char *in)
+
 {
+
   for (; *in; in++) {
+
       if (*in=='"') return (1);
+
       if (*in=='\n') return (1);
+
       if (*in=='\r') return (1);
+
   }
+
   return (0);
+
 }
 
+
+
 /* Return value of arg from http querystring.  */
+
+
 
 BOOL getqueryarg (const char* querystr, char* value, const char* arg, int valuesize) {
 
@@ -2786,12 +2951,24 @@ BOOL getqueryarg (const char* querystr, char* value, const char* arg, int values
 	return TRUE;
 }
 
+
+
+
 void relay_granting_reply(EXTENSION_CONTROL_BLOCK *pECB, pubcookie_dir_rec *p, char *grpl, char *redirect_url, char *get_args)
-{ 	char httpheader[START_COOKIE_SIZE+1024];
-	char sztmpstr[MAX_BUFFER];	char f_url[MAX_BUFFER];
+
+{ 
+	char httpheader[START_COOKIE_SIZE+1024];
+	char sztmpstr[MAX_BUFFER];
+	char f_url[MAX_BUFFER];
+
+
 	char urlbuf[MAX_BUFFER];
-	int urlError = 0;	
+	int urlError = 0;
+	
+
 	// Send HTTP headers and set granting cookie
+
+
 
 	// syslog(LOG_INFO,"Extension relaying cookie %s\n   domain=%s;\n   path=/;\n   secure;\n",PBC_G_COOKIENAME,p->Enterprise_Domain);
 	// Access issues in 6.0
@@ -2828,10 +3005,13 @@ void relay_granting_reply(EXTENSION_CONTROL_BLOCK *pECB, pubcookie_dir_rec *p, c
 					p->appsrvid,
 					r_url); 		
 	}else{
-		snprintf(httpheader, START_COOKIE_SIZE+1024, "Content-type: text/html; charset=utf-8;\r\n\r\n");
-	}
+
+		snprintf(httpheader, START_COOKIE_SIZE+1024, "Content-type: text/html; charset=utf-8;\r\n\r\n");
+
+	}
 	zeroterm(httpheader, START_COOKIE_SIZE+1024);
-	if (urlError) {
+
+	if (urlError) {
 		SendHttpHeaders(pECB, "200 OK", httpheader);
 	}else{
 		SendHttpHeaders(pECB, "302 Moved Temporarily", httpheader);
@@ -2839,8 +3019,11 @@ void relay_granting_reply(EXTENSION_CONTROL_BLOCK *pECB, pubcookie_dir_rec *p, c
 
 	
 	//output page
+
 	WriteString(pECB,"<HTML>\r\n");
+
 	WriteString(pECB,"<HEAD>\r\n");
+
 	
 	
 
@@ -2850,8 +3033,17 @@ void relay_granting_reply(EXTENSION_CONTROL_BLOCK *pECB, pubcookie_dir_rec *p, c
 	{
 
 		WriteString(pECB,"<TITLE>Authentication Error</TITLE>");
+
 		WriteString(pECB,"</HEAD>\r\n");
-		WriteString(pECB,"<BODY>\r\n");		WriteString(pECB,"<H1>Authentication Error</H1>\r\n");		WriteString(pECB,"<P>Invalid redirect URL.</P>\r\n");		WriteString(pECB,"</BODY>\r\n");
+
+		WriteString(pECB,"<BODY>\r\n");
+
+		WriteString(pECB,"<H1>Authentication Error</H1>\r\n");
+
+		WriteString(pECB,"<P>Invalid redirect URL.</P>\r\n");
+
+		WriteString(pECB,"</BODY>\r\n");
+
 		WriteString(pECB,"</HTML>\r\n");
 	}
 	else
@@ -2860,40 +3052,69 @@ void relay_granting_reply(EXTENSION_CONTROL_BLOCK *pECB, pubcookie_dir_rec *p, c
 		WriteString(pECB,"<TITLE>302 Found</TITLE>");
 
 		WriteString(pECB,"</HEAD>\r\n");
+
 		WriteString(pECB,"<BODY>\r\n");
+
 		WriteString(pECB, "<H1>Found</H1>\r\n");
 
 		snprintf(sztmpstr,MAX_BUFFER,"<P>This document has moved <A HREF=\"%s\">here</A>.</P>\r\n>",r_url);		
    		zeroterm(sztmpstr,MAX_BUFFER);
 						
-		WriteString(pECB,sztmpstr);		
+		WriteString(pECB,sztmpstr);
+		
 		WriteString(pECB,"</BODY>\r\n");
+
 		WriteString(pECB,"</HTML>\r\n");
 	}
 	   
 	   
+
 	
+
 }
 
 
+
+
+
+
+
+
+
 /* Logout requests from an application will have a the
+
    logout action variable.  Relay to the login server. 
+
    
+
    Function is obsolete
+
    Filter will initate logout directly*/
+
   
+
 void relay_logout_request(EXTENSION_CONTROL_BLOCK *pECB, pubcookie_dir_rec *p, char *act, const char *qs)
+
 {
+
    char a1[1024], a2[1024];
+
    char *furl;
+
    size_t l;
 
+
+
    char *post=NULL;
+
    char httpheader[START_COOKIE_SIZE+256];
    char sztmpstr[MAX_BUFFER];
+
    DWORD dwBufferSize = sizeof sztmpstr;
 
+
    // Send HTTP headers and clear granting reqest cookie
+
    snprintf(httpheader, START_COOKIE_SIZE+256, "Set-Cookie: %s=%s; domain=%s; path=/; expires=%s; secure\r\nContent-type: text/html\r\n\r\n", 
 			PBC_G_REQ_COOKIENAME,
 			PBC_CLEAR_COOKIE,
@@ -2901,33 +3122,57 @@ void relay_logout_request(EXTENSION_CONTROL_BLOCK *pECB, pubcookie_dir_rec *p, c
 			EARLIEST_EVER);
    zeroterm(httpheader, START_COOKIE_SIZE+256);
 
+
    SendHttpHeaders(pECB, "200 OK", httpheader);
 
 
+
+
+
    // Build the redirection 
+
    getqueryarg(qs,a1,"one",1024);
    getqueryarg(qs,a2,"two",1024);
 
+
    l = strlen(p->Login_URI) + 
+
          strlen(PBC_GETVAR_LOGOUT_ACTION) + strlen(act) +
+
          strlen(a1) + strlen(a2) + 32;
+
    furl = (char*) malloc(l);
+
    snprintf(furl,l, "%s?%s=%s&one=%s&two=%s", p->Login_URI,
+
            PBC_GETVAR_LOGOUT_ACTION, act, a1, a2);
+
    zeroterm(furl,l);
 
+
    //output page
+
    WriteString(pECB,"<HTML>\r\n");
+
    WriteString(pECB,"<HEAD>\r\n");
+
    snprintf(sztmpstr,MAX_BUFFER,"<meta http-equiv=\"Refresh\" content=\"0;URL=%s\"\r\n>",furl);
+
    zeroterm(sztmpstr,MAX_BUFFER);
    WriteString(pECB,sztmpstr);
+
    WriteString(pECB,"</HEAD>\r\n");
+
    WriteString(pECB,"<BODY>\r\n");
+
    WriteString(pECB,"</BODY>\r\n");
+
    WriteString(pECB,"</HTML>\r\n");
 
+
+
    free(furl);
+
 }
 
 DWORD WINAPI HttpExtensionProc(IN EXTENSION_CONTROL_BLOCK *pECB)
@@ -2946,9 +3191,11 @@ DWORD WINAPI HttpExtensionProc(IN EXTENSION_CONTROL_BLOCK *pECB)
 
  //Sleep(20000);  //debug
   pubcookie_dir_rec *p = (pubcookie_dir_rec *)malloc(sizeof(pubcookie_dir_rec));
+
   memset(p,0,sizeof(pubcookie_dir_rec));
 
   dwBufferSize = sizeof szBuffer;
+
   if ((pECB->GetServerVariable(pECB->ConnID, "QUERY_STRING", szBuffer, &dwBufferSize))) {
 	  strcpy(qs, szBuffer);
   } else {
@@ -2959,15 +3206,16 @@ DWORD WINAPI HttpExtensionProc(IN EXTENSION_CONTROL_BLOCK *pECB)
 
   // syslog(LOG_ERR,"p->Login_URI = %s : strlen = %d",p->Login_URI,strlen(p->Login_URI)); 
 
-  if (strlen(p->appsrvid) < 1) {	 output_error_page(pECB);
+  if (strlen(p->appsrvid) < 1) {
+	 output_error_page(pECB);
      return HSE_STATUS_ERROR;
   }
 
   libpbc_config_init(p, NULL, "relay");
 
   /* figure out relay uri */
-
   dwBufferSize = sizeof szBuffer;
+
   if (pECB->GetServerVariable(pECB->ConnID, "SERVER_NAME", szBuffer, &dwBufferSize)) {
 	  host = strdup(szBuffer);
   } else {
@@ -2975,6 +3223,7 @@ DWORD WINAPI HttpExtensionProc(IN EXTENSION_CONTROL_BLOCK *pECB)
   }
 
   dwBufferSize = sizeof szBuffer;
+
   if (pECB->GetServerVariable(pECB->ConnID, "URL", szBuffer, &dwBufferSize)) {
 	  uri = strdup(szBuffer);
   } else {
@@ -2982,6 +3231,7 @@ DWORD WINAPI HttpExtensionProc(IN EXTENSION_CONTROL_BLOCK *pECB)
   }
 
   dwBufferSize = sizeof szBuffer;
+
   if (pECB->GetServerVariable(pECB->ConnID, "SERVER_PORT", szBuffer, &dwBufferSize)) {
 	  port=strdup(szBuffer);
   } else {
@@ -3002,7 +3252,9 @@ DWORD WINAPI HttpExtensionProc(IN EXTENSION_CONTROL_BLOCK *pECB)
   } else uport = strdup("");
 
   ts = 24 + strlen(host) + strlen(uport) + strlen(uri) + strlen(qs);
+
   p->Relay_URI = (char*) malloc(ts);
+
   snprintf(p->Relay_URI,ts,"http%s://%s%s%s%s%s",
            ishttps? "s" : "", host, uport, uri,qs[0]?"?":"", qs); 
 	zeroterm(p->Relay_URI,ts);
@@ -3016,14 +3268,17 @@ DWORD WINAPI HttpExtensionProc(IN EXTENSION_CONTROL_BLOCK *pECB)
     /* A login reply to the application will have a granting
      cookie in posted form data */
      hKeyList = GetKeyList(pECB);
- 
-     if (hKeyFound = FindKey(hKeyList,PBC_G_COOKIENAME)) {
+
+      if (hKeyFound = FindKey(hKeyList,PBC_G_COOKIENAME)) {
 		 postdata = (char *)GetKeyBuffer(hKeyFound);
 		 if (hKeyFound = FindKey(hKeyList,"redirect_url")) {
-			 redirect_url = (char *)GetKeyBuffer(hKeyFound);		 }		 if (hKeyFound = FindKey(hKeyList,"get_args")) {			 get_args = (char *)GetKeyBuffer(hKeyFound);		 }
+			 redirect_url = (char *)GetKeyBuffer(hKeyFound);
+		 }
+		 if (hKeyFound = FindKey(hKeyList,"get_args")) {
+			 get_args = (char *)GetKeyBuffer(hKeyFound);
+		 }
 	     relay_granting_reply(pECB, p, postdata, redirect_url, get_args); 
     } else  
-
       /* A login request from an application will have a granting 
        request cookie */
        if (cookie= Get_Ext_Cookie(pECB, p, PBC_G_REQ_COOKIENAME)) {
@@ -3031,11 +3286,14 @@ DWORD WINAPI HttpExtensionProc(IN EXTENSION_CONTROL_BLOCK *pECB)
            free(cookie);
           /* Otherwise this is an invalid request */
 
-    } else {       output_error_page(pECB);
+    } else {
+       output_error_page(pECB);
        retcode = HSE_STATUS_ERROR;
     }
    FreeKeyList(hKeyList);
   }
+
+
 
   if(host) free(host);
   if(uri) free(uri);
@@ -3043,7 +3301,9 @@ DWORD WINAPI HttpExtensionProc(IN EXTENSION_CONTROL_BLOCK *pECB)
   free(uport);
   free(p->Relay_URI);
   free(p);
+
   return retcode;
+
 }
 
 

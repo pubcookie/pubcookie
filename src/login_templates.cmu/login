@@ -1,0 +1,159 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+    <title>
+      WebISO Secure Login
+    </title>
+    <style type="text/css">
+    body {
+    background-color: #ffffff;
+    }
+    span.c0 {font-family: Geneva, Arial, Helvetica, Sans-Serif}
+    span.c1 {font-family: Geneva, Arial, Helvetica; font-size: 80%}
+    span.c2 {font-family: Geneva, Arial, Helvetica; font-size: 144%}
+    </style>
+    <script type="text/javascript">
+    var servertime = %curtime%;
+    var skew = 120;
+    var msg = "\nThe time skew between your system and the server is over\n" +
+              "two minutes. Please check your time zone and resynchronize\n"  +
+              "your clock. For more help, contact the Help Center.\n";
+
+    var d = new Date();
+    var clienttime = d.getTime() / 1000;
+    var diff = Math.round(Math.abs(clienttime - servertime));
+
+    if (diff > skew) {
+         msg += "Difference: " + diff + " seconds\n";
+         alert(msg);
+    }
+    </script>
+  </head>
+  <body>
+    <span class="c0">
+      <form NAME="query" ACTION="%loginuri%" METHOD="post" AUTOCOMPLETE="off"
+ ENCTYPE="application/x-www-form-urlencoded">
+        <table border=0 width="100%" cellspacing="0" cellpadding="5"
+               bgcolor="#DDDDDD">
+          <tr>
+            <td bgcolor="#AAAAAA">
+            </td>
+            <td bgcolor="#AAAAAA" align="right">
+              <img alt="Carnegie Mellon Secure Web" src="/images/unitmark.gif" width="179" height="44">
+            </td>
+          </tr>
+          <tr>
+            <td bgcolor="#DDDDDD" valign="bottom" align="center">
+              <img alt="Carnegie Mellon Seal" src="/images/seal.gif" width="180" height="179">
+            </td>
+            <td bgcolor="#DDDDDD" align="left">
+              <strong><span class="c2">WebISO Secure Login</span></strong>
+              <span class="c1">[<a href="https://www.cmu.edu/computing/webiso/" target="_blank">about</a>]</span>
+              <br>
+              <br>
+
+              %message%
+              <br>
+              <br>
+               
+              <table border=0 width="100%" bgcolor="#DDDDDD">
+                <tr>
+                  <td valign="top" align="left" bgcolor="#DDDDDD"
+                  nowrap>
+                    <strong>User ID</strong>&nbsp;
+                  </td>
+                  <td valign="top" align="left" nowrap bgcolor="#DDDDDD">
+                    <input type="text" name="user" size="17"
+                        value="" tabindex="1">@<select name=
+                        "realm" tabindex="3">
+                      <option value="ANDREW.CMU.EDU" selected>
+                        ANDREW.CMU.EDU
+                      <option value="CS.CMU.EDU">
+                        CS.CMU.EDU
+                      <option value="ECE.CMU.EDU">
+                        ECE.CMU.EDU
+                      </select>
+                  </td>
+		  <td width="100%">	
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <strong>Password</strong>&nbsp;
+                  </td>
+                  <td valign="top" bgcolor="#DDDDDD"
+                  nowrap>
+                    <input type="password" name="pass" size="17"
+                    tabindex="2">
+		 </td>
+		 <td width="100%">	
+                </tr>
+                <tr>
+                  <td bgcolor="#DDDDDD" nowrap valign="top">
+                  </td>
+                  <td>
+                    <input type="submit" name="submit" value=
+                    "Login" size="15"> %hiddenfields%
+                    %getcredhidden%
+                  </td>
+                  <td bgcolor="#DDDDDD" nowrap valign="top">
+                  </td>
+                </tr>
+                <tr>
+                  <td colspan="3" valign="top" bgcolor="#DDDDDD">
+                    <p><br>
+                      <strong>Warning:</strong>
+                      <span class="c1">This web page, served
+                      through https://webiso.andrew.cmu.edu/ is
+                      requesting your UserID and password. If you
+                      have any doubts as to the legitimacy of this
+                      page doing so, please <b>look for
+                      https://webiso.andrew.cmu.edu/ in the URL</b>
+                      before you enter your user ID and password.
+                      If you think that this page should not be
+                      requesting your User ID and password, please
+                      report it to advisor@andrew.cmu.edu and be
+                      sure to include the URL.</span>
+                      <br>
+                      <br>
+                      <strong>Carnegie Mellon Certificates:</strong>
+                      <span class="c1">Many of the services that use
+                      WebISO also use the Carnegie Mellon Certificates.
+                      If you haven't already done so, you should <a href=
+                      "https://www.cmu.edu/certificates/"
+                         target="_blank">install the Carnegie
+                         Mellon CA Root Certificates in your
+                         browser.</a></span>
+                      <br>
+                      <br>
+                      <strong>About this service.</strong>
+                      <span class="c1">WebISO
+                      verifies the identity of Carnegie Mellon
+                      users.  WebISO does not require installation
+                      of specialized software. However, your
+                      browser must be configured to accept cookies.
+                      This is the default configuration for all
+                      major web browsers. If you have disabled
+                      cookies in the past you will need to enable
+                      cookie support in your browser to use
+                      WebISO... [<a href=
+                      "https://www.cmu.edu/computing/webiso/"
+                      target="_blank">more</a>]
+                      <br>
+                      </span>
+                      <br>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+        <br>
+      </form>
+    </span>
+    <script type="text/javascript" language="javascript">
+    document.query.user.focus()
+    </script>
+  </body>
+</head>

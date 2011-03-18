@@ -66,6 +66,21 @@
 
 		<h4><a name="news">What's New</a></h4>
 
+                <p>Significant changes in Pubcookie 3.3.5:</p>
+
+                <ul>
+                    <li><p><b>Added callbacks for OpenSSL to fix issues unbundling session cookies.</b>
+                    Problems with the previous 3.3.4 release were observed on some multi-processor systems running Windows Server 2003.
+                    Once the problem was encountered, current session cookies couldn't be unbundled until IIS was reset. 
+                    The event log would contain the following messages:
+                    <blockquote><tt>libpbc_rd_safe: couldn't verify signature for example.org OpenSSL error: error:0606506D:digital envelope routines:EVP_DecryptFinal:wrong final block length<br>
+                       libpbc_unbundle_cookie: libpbc_rd_priv() failed<br>
+                       [Pubcookie_User] Can't unbundle Session cookie for URL /blah.asp; remote_host: xx.xx.xx.xx</tt></blockquote>
+                    Additional review of OpenSSL revealed it wants callbacks set up so it can do locking for the thread-sensitive operations.
+                    The callbacks were added, tested, and load tested for this release.</p></li>
+                    <li><p><b>Upgraded supporting OpenSSL libraries to version 0.9.8o.</b></p></li>
+                </ul>
+
                 <p>Significant changes in Pubcookie 3.3.4:</p>
 
                 <ul>

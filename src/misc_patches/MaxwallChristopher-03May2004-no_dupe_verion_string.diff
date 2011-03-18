@@ -1,0 +1,33 @@
+Index: mod_pubcookie.c
+===================================================================
+RCS file: /cvs/Gateweaver/src/var.www/pubcookie/src/mod_pubcookie.c,v
+retrieving revision 1.1
+retrieving revision 1.2
+diff -u -r1.1 -r1.2
+--- mod_pubcookie.c	28 Feb 2004 08:00:55 -0000	1.1
++++ mod_pubcookie.c	2 Mar 2004 20:07:56 -0000	1.2
+@@ -1106,18 +1106,18 @@
+     pubcookie_server_rec 	*scfg;
+     char 		 	*fname;
+ 
+-    /* initialize each virtual server */
+-    /* some of the code should be pulled out of the loop */
+-    for (s = main_s; s != NULL; s=s->next) {
+-
+-    scfg = (pubcookie_server_rec *) ap_get_module_config(s->module_config, 
+-                                                   &pubcookie_module);
+     ap_add_version_component(
+ #ifdef APACHE2
+             p,
+ #endif
+             ap_pstrcat(p, "mod_pubcookie/", PBC_VERSION_STRING, NULL));
+ 
++    /* initialize each virtual server */
++    /* some of the code should be pulled out of the loop */
++    for (s = main_s; s != NULL; s=s->next) {
++
++    scfg = (pubcookie_server_rec *) ap_get_module_config(s->module_config, 
++                                                   &pubcookie_module);
+     ap_log_error(PC_LOG_DEBUG, s,
+         "pubcookie_init: hello");
+

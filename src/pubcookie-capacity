@@ -1,0 +1,7 @@
+The way i've been thinking about pubcookie capacity requirements is the   
+following, and this would be a good time to discuss it.  If we assume a
+campus community of 80,000 and 75% of them come to work/school/lab during
+the same hour, equally distibuted across that hour.  During that hour they
+login and visit three apps.  So, we're looking at 3000 login loops per   
+minute or 50 per second.
+

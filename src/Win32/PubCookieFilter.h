@@ -21,7 +21,7 @@
 // when configure is run again!
 // **************************************************************************
 
-#define Pubcookie_Version "Pubcookie ISAPI Filter, 3.3.4a"
+#define Pubcookie_Version "Pubcookie ISAPI Filter, 3.3.5"
 
 #define MAX_INSTANCE_ID 64
 #define MAX_REG_BUFF 2048 /* Using a fixed size saves a registy lookup 

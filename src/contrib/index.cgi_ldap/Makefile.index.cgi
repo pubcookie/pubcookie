@@ -18,7 +18,7 @@
 #
 ################################################################################
 #
-#   $Id: Makefile.index.cgi,v 1.1 2001/12/14 00:38:58 willey Exp $
+#   $Id: Makefile.index.cgi,v 1.1 2001-12-14 00:38:58 willey Exp $
 #
 
 # your compiler here

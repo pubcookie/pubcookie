@@ -1,0 +1,7 @@
+--gnu-style
+-nut
+--indent-level4
+--dont-break-procedure-type
+--braces-on-if-line
+--cuddle-else
+--line-length75

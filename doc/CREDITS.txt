@@ -10,6 +10,7 @@
      * Rob Christ           University of Washington (former)
      * Jeff Eaton           Carnegie Mellon University
      * Jim Fox              University of Washington
+     * Jeff Franklin        University of Washington
      * Larry Greenfield     Carnegie Mellon University (former)
      * Jon Miner            University of Wisconsin
      * Ryan Muldoon         University of Wisconsin (former)
@@ -61,6 +62,9 @@
      * Sun ONE Directory SDK
      * OpenSSL
      * ViewCVS
+     * Subversion
+     * View VC
+     * TortoiseSVN
 
    (*) cgic, copyright 1996 by Thomas Boutell. Permission is granted to
    use cgic in any application, commercial or noncommercial, at no cost.
