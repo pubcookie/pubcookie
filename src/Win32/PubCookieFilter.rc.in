@@ -74,7 +74,7 @@ BEGIN
             VALUE "FileDescription", "PubCookieFilter ISAPI Filter"
             VALUE "FileVersion", "@PBC_VERSION_MAJOR@, @PBC_VERSION_MINOR@, @PBC_VERSION_PATCH@, @PBC_WIN_BUILD_NUMBER@"
             VALUE "InternalName", "PubCookieFilter"
-            VALUE "LegalCopyright", "Copyright 2000-2007"
+            VALUE "LegalCopyright", "Copyright 2000-2010"
             VALUE "OriginalFilename", "PubCookieFilter.DLL"
             VALUE "ProductName", "PubCookieFilter ISAPI Filter"
             VALUE "ProductVersion", "@PBC_VERSION_MAJOR@, @PBC_VERSION_MINOR@, @PBC_VERSION_PATCH@, @PBC_WIN_BUILD_NUMBER@"

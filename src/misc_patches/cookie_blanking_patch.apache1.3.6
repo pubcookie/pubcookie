@@ -1,0 +1,70 @@
+*** util_script.c.orig	Thu Jul 22 15:19:55 1999
+--- util_script.c	Thu Jul 22 15:20:04 1999
+***************
+*** 150,155 ****
+--- 150,188 ----
+      return res;
+  }
+  
++ /* cleans login from cookie */
++ static char *clean_cookie(pool *a, char *cname, char *cookie)
++ {
++     char *res = ap_pstrdup (a, cookie);
++     char *cp = res;
++     int lcname;
++     char *s,*t;
++ 
++     if (!cname) return (res);
++     lcname = strlen(cname);
++ 
++     while (cp=strstr(cp,cname)) {
++        if ((cp==res) || (!isalnum(*(cp-1)))) {
++           for (s=cp+lcname+1;*s;s++) if (*s==';') break;
++           t = cp;
++           if (*s) {
++              s++;
++              while (*s==' ') s++;
++              while (*s) *t++ = *s++;
++           }
++           *t++ = '\0';
++        } else cp += lcname;
++     }
++ 
++     if (!*res) return (NULL);
++     /* clean up any trailing semi */
++     cp = res+strlen(res)-1;
++     while  (cp>res && ((*cp==';')||(*cp==' '))) *cp-- = '\0';
++     return (res);
++ }
++ 
++ 
++ 
+  API_EXPORT(char **) ap_create_environment(pool *p, table *t)
+  {
+      array_header *env_arr = ap_table_elts(t);
+***************
+*** 202,207 ****
+--- 235,243 ----
+      array_header *hdrs_arr = ap_table_elts(r->headers_in);
+      table_entry *hdrs = (table_entry *) hdrs_arr->elts;
+      int i;
++     char *pubgname = "pubcookie_g";
++     char *pubsname = "pubcookie_s";
++ 
+  
+      /* use a temporary table which we'll overlap onto
+       * r->subprocess_env later
+***************
+*** 240,245 ****
+--- 276,286 ----
+  	    continue;
+  	}
+  #endif
++         else if (!strcasecmp(hdrs[i].key, "Cookie")) {
++             char *a = clean_cookie(r->pool, pubgname, hdrs[i].val);
++             if (a) a = clean_cookie(r->pool, pubsname, a);
++             if (a) ap_table_addn(e, "HTTP_COOKIE", a);
++         }
+  	else {
+  	    ap_table_addn(e, http2env(r->pool, hdrs[i].key), hdrs[i].val);
+  	}

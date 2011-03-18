@@ -1,32 +1,58 @@
 <?xml version="1.0" encoding="Windows-1252"?>
 <VisualStudioProject
 	ProjectType="Visual C++"
-	Version="7.10"
+	Version="9.00"
 	Name="PubCookieFilter"
-	SccProjectName="&quot;$/PubCookieFilter&quot;, XXBAAAAA"
-	SccLocalPath=".">
+	ProjectGUID="{1A25D5CB-EAD0-4631-9013-F11F3109C2D5}"
+	TargetFrameworkVersion="131072"
+	>
 	<Platforms>
 		<Platform
-			Name="Win32"/>
+			Name="Win32"
+		/>
 	</Platforms>
+	<ToolFiles>
+	</ToolFiles>
 	<Configurations>
 		<Configuration
 			Name="Release|Win32"
 			OutputDirectory=".\Release"
 			IntermediateDirectory=".\Release"
 			ConfigurationType="2"
+			InheritedPropertySheets="$(VCInstallDir)VCProjectDefaults\UpgradeFromVC71.vsprops"
 			UseOfMFC="0"
-			ATLMinimizesCRunTimeLibraryUsage="FALSE"
+			ATLMinimizesCRunTimeLibraryUsage="false"
 			CharacterSet="2"
-			DeleteExtensionsOnClean="*.obj;*.ilk;*.tlb;*.tli;*.tlh;*.tmp;*.rsp;*.bat;$(TargetPath)">
+			DeleteExtensionsOnClean="*.obj;*.ilk;*.tlb;*.tli;*.tlh;*.tmp;*.rsp;*.bat;$(TargetPath)"
+			>
+			<Tool
+				Name="VCPreBuildEventTool"
+			/>
+			<Tool
+				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="VCXMLDataGeneratorTool"
+			/>
+			<Tool
+				Name="VCWebServiceProxyGeneratorTool"
+			/>
+			<Tool
+				Name="VCMIDLTool"
+				PreprocessorDefinitions="NDEBUG"
+				MkTypLibCompatible="true"
+				SuppressStartupBanner="true"
+				TargetEnvironment="1"
+				TypeLibraryName=".\Release/PubCookieFilter.tlb"
+			/>
 			<Tool
 				Name="VCCLCompilerTool"
 				InlineFunctionExpansion="1"
 				AdditionalIncludeDirectories=".\include;.\include\openssl;..\"
 				PreprocessorDefinitions="_USRDLL;WIN32;_WINDOWS;STATICLIB;HAVE_STDLIB_H;HAVE_STRING_H;HAVE_STDIO_H;HAVE_STDARG_H;HAVE_SNPRINTF;HAVE_CTYPE_H;SECURITY_WIN32;HAVE_TIME_H"
-				StringPooling="TRUE"
+				StringPooling="true"
 				RuntimeLibrary="2"
-				EnableFunctionLevelLinking="TRUE"
+				EnableFunctionLevelLinking="true"
 				UsePrecompiledHeader="0"
 				PrecompiledHeaderFile=".\Release/PubCookieFilter.pch"
 				AssemblerOutput="2"
@@ -35,58 +61,87 @@
 				ProgramDataBaseFileName=".\Release/"
 				BrowseInformation="1"
 				WarningLevel="3"
-				SuppressStartupBanner="TRUE"
+				SuppressStartupBanner="true"
 				DebugInformationFormat="3"
-				CompileAs="0"/>
+				CompileAs="0"
+			/>
 			<Tool
-				Name="VCCustomBuildTool"/>
+				Name="VCManagedResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="NDEBUG"
+				Culture="1033"
+			/>
+			<Tool
+				Name="VCPreLinkEventTool"
+			/>
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalOptions="/MACHINE:I386 /IGNORE:4089 /RELEASE"
-				AdditionalDependencies="libeay32.lib odbc32.lib odbccp32.lib wsock32.lib "
+				AdditionalDependencies="libeay32.lib odbc32.lib odbccp32.lib wsock32.lib"
 				OutputFile=".\Release/PubCookieFilter.dll"
 				LinkIncremental="1"
 				AdditionalLibraryDirectories=".\lib"
 				ModuleDefinitionFile=".\PubCookieFilter.def"
-				GenerateDebugInformation="TRUE"
+				GenerateDebugInformation="true"
 				ProgramDatabaseFile=".\Release/PubCookieFilter.pdb"
-				ImportLibrary=".\Release/PubCookieFilter.lib"/>
+				RandomizedBaseAddress="1"
+				DataExecutionPrevention="0"
+				ImportLibrary=".\Release/PubCookieFilter.lib"
+			/>
 			<Tool
-				Name="VCMIDLTool"
-				PreprocessorDefinitions="NDEBUG"
-				MkTypLibCompatible="TRUE"
-				SuppressStartupBanner="TRUE"
-				TargetEnvironment="1"
-				TypeLibraryName=".\Release/PubCookieFilter.tlb"/>
+				Name="VCALinkTool"
+			/>
 			<Tool
-				Name="VCPostBuildEventTool"/>
+				Name="VCManifestTool"
+			/>
 			<Tool
-				Name="VCPreBuildEventTool"/>
+				Name="VCXDCMakeTool"
+			/>
 			<Tool
-				Name="VCPreLinkEventTool"/>
+				Name="VCBscMakeTool"
+			/>
 			<Tool
-				Name="VCResourceCompilerTool"
-				PreprocessorDefinitions="NDEBUG"
-				Culture="1033"/>
+				Name="VCFxCopTool"
+			/>
 			<Tool
-				Name="VCWebServiceProxyGeneratorTool"/>
+				Name="VCAppVerifierTool"
+			/>
 			<Tool
-				Name="VCXMLDataGeneratorTool"/>
-			<Tool
-				Name="VCWebDeploymentTool"/>
-			<Tool
-				Name="VCManagedWrapperGeneratorTool"/>
-			<Tool
-				Name="VCAuxiliaryManagedWrapperGeneratorTool"/>
+				Name="VCPostBuildEventTool"
+			/>
 		</Configuration>
 		<Configuration
 			Name="Debug|Win32"
 			OutputDirectory=".\Debug"
 			IntermediateDirectory=".\Debug"
 			ConfigurationType="2"
+			InheritedPropertySheets="$(VCInstallDir)VCProjectDefaults\UpgradeFromVC71.vsprops"
 			UseOfMFC="0"
-			ATLMinimizesCRunTimeLibraryUsage="FALSE"
-			CharacterSet="2">
+			ATLMinimizesCRunTimeLibraryUsage="false"
+			CharacterSet="2"
+			>
+			<Tool
+				Name="VCPreBuildEventTool"
+			/>
+			<Tool
+				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="VCXMLDataGeneratorTool"
+			/>
+			<Tool
+				Name="VCWebServiceProxyGeneratorTool"
+			/>
+			<Tool
+				Name="VCMIDLTool"
+				PreprocessorDefinitions="_DEBUG"
+				MkTypLibCompatible="true"
+				SuppressStartupBanner="true"
+				TargetEnvironment="1"
+				TypeLibraryName=".\Debug/PubCookieFilter.tlb"
+			/>
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
@@ -101,52 +156,59 @@
 				ProgramDataBaseFileName=".\Debug/"
 				BrowseInformation="1"
 				WarningLevel="3"
-				SuppressStartupBanner="TRUE"
+				SuppressStartupBanner="true"
 				DebugInformationFormat="3"
-				CompileAs="0"/>
+				CompileAs="0"
+			/>
 			<Tool
-				Name="VCCustomBuildTool"/>
+				Name="VCManagedResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="_DEBUG"
+				Culture="1033"
+			/>
+			<Tool
+				Name="VCPreLinkEventTool"
+			/>
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalOptions="/MACHINE:I386 /NODEFAULTLIB:MSVCRT"
-				AdditionalDependencies="libeay32.lib odbc32.lib odbccp32.lib wsock32.lib "
+				AdditionalDependencies="libeay32.lib odbc32.lib odbccp32.lib wsock32.lib"
 				OutputFile=".\Debug/PubCookieFilter.dll"
 				LinkIncremental="1"
 				AdditionalLibraryDirectories=".\lib"
 				IgnoreDefaultLibraryNames=""
 				ModuleDefinitionFile=".\PubCookieFilter.def"
-				GenerateDebugInformation="TRUE"
+				GenerateDebugInformation="true"
 				ProgramDatabaseFile=".\Debug/PubCookieFilter.pdb"
-				GenerateMapFile="TRUE"
+				GenerateMapFile="true"
 				MapFileName=".\Debug/PubCookieFilter.map"
-				ImportLibrary=".\Debug/PubCookieFilter.lib"/>
+				RandomizedBaseAddress="1"
+				DataExecutionPrevention="0"
+				ImportLibrary=".\Debug/PubCookieFilter.lib"
+			/>
 			<Tool
-				Name="VCMIDLTool"
-				PreprocessorDefinitions="_DEBUG"
-				MkTypLibCompatible="TRUE"
-				SuppressStartupBanner="TRUE"
-				TargetEnvironment="1"
-				TypeLibraryName=".\Debug/PubCookieFilter.tlb"/>
+				Name="VCALinkTool"
+			/>
 			<Tool
-				Name="VCPostBuildEventTool"/>
+				Name="VCManifestTool"
+			/>
 			<Tool
-				Name="VCPreBuildEventTool"/>
+				Name="VCXDCMakeTool"
+			/>
 			<Tool
-				Name="VCPreLinkEventTool"/>
+				Name="VCBscMakeTool"
+			/>
 			<Tool
-				Name="VCResourceCompilerTool"
-				PreprocessorDefinitions="_DEBUG"
-				Culture="1033"/>
+				Name="VCFxCopTool"
+			/>
 			<Tool
-				Name="VCWebServiceProxyGeneratorTool"/>
+				Name="VCAppVerifierTool"
+			/>
 			<Tool
-				Name="VCXMLDataGeneratorTool"/>
-			<Tool
-				Name="VCWebDeploymentTool"/>
-			<Tool
-				Name="VCManagedWrapperGeneratorTool"/>
-			<Tool
-				Name="VCAuxiliaryManagedWrapperGeneratorTool"/>
+				Name="VCPostBuildEventTool"
+			/>
 		</Configuration>
 	</Configurations>
 	<References>
@@ -154,92 +216,121 @@
 	<Files>
 		<Filter
 			Name="Source Files"
-			Filter="cpp;c;cxx;rc;def;r;odl;idl;hpj;bat">
+			Filter="cpp;c;cxx;rc;def;r;odl;idl;hpj;bat"
+			>
 			<File
-				RelativePath="..\base64.c">
+				RelativePath="..\base64.c"
+				>
 			</File>
 			<File
-				RelativePath=".\debug.c">
+				RelativePath=".\debug.c"
+				>
 			</File>
 			<File
-				RelativePath=".\html.cpp">
+				RelativePath=".\html.cpp"
+				>
 			</File>
 			<File
-				RelativePath=".\keys.cpp">
+				RelativePath=".\keys.cpp"
+				>
 			</File>
 			<File
-				RelativePath="..\libpubcookie.c">
+				RelativePath="..\libpubcookie.c"
+				>
 			</File>
 			<File
-				RelativePath="..\pbc_configure.c">
+				RelativePath="..\pbc_configure.c"
+				>
 			</File>
 			<File
-				RelativePath="..\pbc_myconfig.c">
+				RelativePath="..\pbc_myconfig.c"
+				>
 			</File>
 			<File
-				RelativePath="..\pbc_time.c">
+				RelativePath="..\pbc_time.c"
+				>
 			</File>
 			<File
-				RelativePath=".\PubCookieFilter.cpp">
+				RelativePath=".\PubCookieFilter.cpp"
+				>
 			</File>
 			<File
-				RelativePath=".\PubCookieFilter.def">
+				RelativePath=".\PubCookieFilter.def"
+				>
 			</File>
 			<File
-				RelativePath="..\security_legacy.c">
+				RelativePath="..\security_legacy.c"
+				>
 			</File>
 			<File
-				RelativePath="..\strlcpy.c">
+				RelativePath="..\strlcpy.c"
+				>
 			</File>
 		</Filter>
 		<Filter
 			Name="Header Files"
-			Filter="h;hpp;hxx;hm;inl">
+			Filter="h;hpp;hxx;hm;inl"
+			>
 			<File
-				RelativePath=".\debug.h">
+				RelativePath=".\debug.h"
+				>
 			</File>
 			<File
-				RelativePath=".\html.h">
+				RelativePath=".\html.h"
+				>
 			</File>
 			<File
-				RelativePath=".\keys.h">
+				RelativePath=".\keys.h"
+				>
 			</File>
 			<File
-				RelativePath="..\libpubcookie.h">
+				RelativePath="..\libpubcookie.h"
+				>
 			</File>
 			<File
-				RelativePath="..\pbc_config.h">
+				RelativePath="..\pbc_config.h"
+				>
 			</File>
 			<File
-				RelativePath="..\pbc_configure.h">
+				RelativePath="..\pbc_configure.h"
+				>
 			</File>
 			<File
-				RelativePath="..\pbc_myconfig.h">
+				RelativePath="..\pbc_myconfig.h"
+				>
 			</File>
 			<File
-				RelativePath="..\pbc_time.h">
+				RelativePath="..\pbc_time.h"
+				>
 			</File>
 			<File
-				RelativePath="..\pbc_version.h">
+				RelativePath="..\pbc_version.h"
+				>
 			</File>
 			<File
-				RelativePath="..\pubcookie.h">
+				RelativePath="..\pubcookie.h"
+				>
 			</File>
 			<File
-				RelativePath=".\PubCookieFilter.h">
+				RelativePath=".\PubCookieFilter.h"
+				>
 			</File>
 			<File
-				RelativePath=".\resource.h">
+				RelativePath=".\resource.h"
+				>
 			</File>
 			<File
-				RelativePath="..\security.h">
+				RelativePath="..\security.h"
+				>
 			</File>
 		</Filter>
 		<Filter
 			Name="Resource Files"
-			Filter="ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe">
+			Filter="ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe"
+			>
 			<File
-				RelativePath=".\PubcookieFilter.rc">
+				RelativePath=".\PubcookieFilter.rc"
+				>
 			</File>
 		</Filter>
 	</Files>

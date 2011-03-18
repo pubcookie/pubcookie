@@ -1,3 +1,19 @@
+Changes with 3.3.5:
+
+*) Upgraded ISAPI filter's supporting OpenSSL libraries to version 0.9.8o.
+
+*) Upgraded PubcookieFilter solution to Visual Studio 2008.
+
+*) Fixed issue in the ISAPI filter related to checking signatures on
+   session cookies ("Can't unbundle Session cookie"), related to 
+   OpenSSL EVP_DecryptFinal and multi-threading on multi-proc systems.
+
+Changes with 3.3.4a:
+
+*) Applied patch to login cgi to make print_header consistent with
+   print_html to fix segfaults RHEL5 (64-bit). (Patch resubmited by 
+   Daniel Baber.)
+
 Changes with 3.3.4:
 
 *) Security fix to ISAPI filter for stack buffer overflow. (Reported by

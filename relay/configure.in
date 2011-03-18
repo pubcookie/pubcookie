@@ -1,0 +1,71 @@
+AC_INIT
+AM_INIT_AUTOMAKE(pcrelay, 1.0)
+AC_PROG_CC
+
+# Define --with-pubcookie 
+# The macro is named "PUBCOOKIE_DIR"
+AC_DEFUN([PUBCOOKIE_DIR],[
+
+        AC_ARG_WITH(
+                pubcookie,
+                [  --with-pubcookie[=DIR]     pubcookie top directory],
+                ,
+                [with_pubcookie="no"]
+        )
+
+        AC_MSG_CHECKING(for pubcookie directory)
+
+        if test "$with_pubcookie" = "no"; then
+                with_pubcookie=..
+        fi
+        # make sure that a well known include file exists
+        if test -e $with_pubcookie/src/pbc_myconfig.o; then
+                pubcookie_src=$with_pubcookie/src
+                AC_MSG_RESULT(pubcookie found!)
+        else
+               AC_MSG_ERROR( pubcookie not complete.  You must build the login server first.)
+        fi
+])
+
+PUBCOOKIE_DIR
+
+# Save the location of pubcookie into the "pubcookie_src" variable.
+# The AC_SUBST macro causes the variable to be saved in config.status
+AC_SUBST(pubcookie_src)
+
+
+# Define --with-webtpl 
+# The macro is named "WEBTPL_DIR"
+AC_DEFUN([WEBTPL_DIR],[
+
+        AC_ARG_WITH(
+                webtpl,
+                [  --with-webtpl[=DIR]     webtpl install directory (/usr/local)],
+                ,
+                [with_webtpl="no"]
+        )
+
+        AC_MSG_CHECKING(for webtpl directory)
+
+        if test "$with_webtpl" = "no"; then
+                webtpl_dir="/usr/local"
+        else
+                webtpl_dir=$with_webtpl
+        fi
+        # make sure that the include file exists
+        if test -e $webtpl_dir/include/webtpl.h; then
+                webtpl_dir=$with_webtpl
+                AC_MSG_RESULT(webtpl found!)
+        else
+                AC_MSG_ERROR( webtpl not found.  Check the value you specified with --with-webtpl)
+        fi
+
+])
+
+WEBTPL_DIR
+
+# Save the location of webtpl into the "webtpl_dir" variable.
+# The AC_SUBST macro causes the variable to be saved in config.status
+AC_SUBST(webtpl_dir)
+
+AC_OUTPUT(Makefile)

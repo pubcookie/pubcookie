@@ -21,7 +21,7 @@
  * So that we can just #include this file instead of having to 
  * worry about shell escapes and whatnot.
  * 
- * $Id: pbc_path.h.in,v 2.16 2008/05/16 22:09:10 willey Exp $
+ * $Id: pbc_path.h.in,v 2.16 2008-05-16 22:09:10 willey Exp $
  */
 
 

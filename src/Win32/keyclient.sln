@@ -1,21 +1,18 @@
-Microsoft Visual Studio Solution File, Format Version 8.00
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "keyclient", "keyclient.vcproj", "{7A0F7EDC-0E86-40FD-991A-717D6FB543B4}"
-	ProjectSection(ProjectDependencies) = postProject
-	EndProjectSection
+Microsoft Visual Studio Solution File, Format Version 10.00
+# Visual Studio 2008
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "keyclient", "keyclient.vcproj", "{EB0E3F9C-882E-4DFF-9F48-F647DE26A259}"
 EndProject
 Global
-	GlobalSection(SolutionConfiguration) = preSolution
-		Debug = Debug
-		Release = Release
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
 	EndGlobalSection
-	GlobalSection(ProjectConfiguration) = postSolution
-		{7A0F7EDC-0E86-40FD-991A-717D6FB543B4}.Debug.ActiveCfg = Debug|Win32
-		{7A0F7EDC-0E86-40FD-991A-717D6FB543B4}.Debug.Build.0 = Debug|Win32
-		{7A0F7EDC-0E86-40FD-991A-717D6FB543B4}.Release.ActiveCfg = Release|Win32
-		{7A0F7EDC-0E86-40FD-991A-717D6FB543B4}.Release.Build.0 = Release|Win32
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{EB0E3F9C-882E-4DFF-9F48-F647DE26A259}.Debug|Win32.ActiveCfg = Debug|Win32
+		{EB0E3F9C-882E-4DFF-9F48-F647DE26A259}.Release|Win32.ActiveCfg = Release|Win32
+		{EB0E3F9C-882E-4DFF-9F48-F647DE26A259}.Release|Win32.Build.0 = Release|Win32
 	EndGlobalSection
-	GlobalSection(ExtensibilityGlobals) = postSolution
-	EndGlobalSection
-	GlobalSection(ExtensibilityAddIns) = postSolution
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
 	EndGlobalSection
 EndGlobal
