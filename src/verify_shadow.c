@@ -24,7 +24,7 @@
  *  
  *    @return 0 on success, -1 if user/pass doesn't match, -2 on system error
  *  
- * $Id: verify_shadow.c,v 1.23 2008/05/16 22:09:10 willey Exp $
+ * $Id$
  */
 
 

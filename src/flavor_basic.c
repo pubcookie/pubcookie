@@ -25,7 +25,7 @@
  *   will pass l->realm to the verifier and append it to the username when
  *   'append_realm' is set
  *
- * $Id: flavor_basic.c,v 1.85 2008/05/16 22:09:10 willey Exp $
+ * $Id$
  */
 
 

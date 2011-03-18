@@ -18,7 +18,7 @@
 /** @file ntmpl.c
  * Template library
  *
- * $Id: ntmpl.c,v 1.29 2008/05/16 22:09:10 willey Exp $
+ * $Id$
  */
 
 #ifdef WITH_FCGI

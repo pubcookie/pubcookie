@@ -16,7 +16,7 @@
  */
 
 /*
-  $Id: strlcpy.h,v 1.11 2008/05/16 22:09:10 willey Exp $
+  $Id$
  */
 
 #ifdef HAVE_CONFIG_H

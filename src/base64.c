@@ -18,7 +18,7 @@
 /** @file base64.c
  * Base64 functions
  *
- * $Id: base64.c,v 1.27 2008/05/16 22:09:10 willey Exp $
+ * $Id$
  */
 
 

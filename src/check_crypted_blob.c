@@ -18,7 +18,7 @@
 /** @file check_crypted_blob.c
  * takes an encrytped blob and checks it
  *
- * $Id: check_crypted_blob.c,v 1.18 2008/05/16 22:09:10 willey Exp $
+ * $Id$
  */
 
 

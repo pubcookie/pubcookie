@@ -43,7 +43,7 @@
  *   @return 0 on success, -1 if sid lookup fails, -3 next PRN,
  *          -2 on system error
  *
- * $Id: verify_uwsecurid.c,v 2.12 2008/05/16 22:09:10 willey Exp $
+ * $Id$
  */
 
 #ifdef HAVE_CONFIG_H

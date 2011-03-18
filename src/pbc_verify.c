@@ -27,7 +27,7 @@
  *
  * key and cert locations all come from pubcookie config
  *
- * $Id: pbc_verify.c,v 1.28 2008/05/16 22:09:10 willey Exp $
+ * $Id$
  */
 
 

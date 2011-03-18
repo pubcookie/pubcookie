@@ -44,7 +44,7 @@
  * Modified 4-April-2005: Fixed security issue - read user and
  * password from stdin rather passing as args. david.houlder@anu.edu.au
  *
- * $Id: verify_fork.c,v 1.12 2008/05/16 22:09:10 willey Exp $
+ * $Id$
  */
 
 #ifdef HAVE_CONFIG_H

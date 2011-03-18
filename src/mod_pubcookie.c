@@ -18,7 +18,7 @@
 /** @file mod_pubcookie.c
  * Apache pubcookie module
  *
- * $Id: mod_pubcookie.c,v 1.223 2009/09/18 21:24:51 fox Exp $
+ * $Id$
  */
 
 #define MAX_POST_DATA 10485760

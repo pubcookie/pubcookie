@@ -16,7 +16,7 @@
 //
  
 //
-//  $Id: PubCookieFilter.cpp,v 1.77 2009/12/09 17:37:05 fox Exp $
+//  $Id$
 //
 
 //#define COOKIE_PATH
@@ -2785,10 +2785,10 @@ BOOL getqueryarg (const char* querystr, char* value, const char* arg, int values
 	free(searchstr);
 	return TRUE;
 }
-
+
 void relay_granting_reply(EXTENSION_CONTROL_BLOCK *pECB, pubcookie_dir_rec *p, char *grpl, char *redirect_url, char *get_args)
 { 	char httpheader[START_COOKIE_SIZE+1024];
-	char sztmpstr[MAX_BUFFER];	char f_url[MAX_BUFFER];
+	char sztmpstr[MAX_BUFFER];	char f_url[MAX_BUFFER];
 	char urlbuf[MAX_BUFFER];
 	int urlError = 0;	
 	// Send HTTP headers and set granting cookie
@@ -2873,8 +2873,8 @@ void relay_granting_reply(EXTENSION_CONTROL_BLOCK *pECB, pubcookie_dir_rec *p, c
 	   
 	   
 	
-}
-
+}
+
 
 /* Logout requests from an application will have a the
    logout action variable.  Relay to the login server. 

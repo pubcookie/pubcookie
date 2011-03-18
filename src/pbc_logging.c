@@ -18,7 +18,7 @@
 /** @file pbc_logging.c
  * Logging
  *
- * $Id: pbc_logging.c,v 1.36 2008/05/16 22:09:10 willey Exp $
+ * $Id$
  */
 
 

@@ -1,5 +1,5 @@
 /* 
-  $Id: cgic.c,v 1.4 2010/01/15 22:33:11 fox Exp $
+  $Id$
  */
 
 #ifdef WITH_FCGI

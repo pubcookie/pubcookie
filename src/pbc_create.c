@@ -24,7 +24,7 @@
  *             crypt_file cert_key_file
  *    anything too big is just truncated, no support for defaults or anything
  *
- * $Id: pbc_create.c,v 1.26 2008/05/16 22:09:10 willey Exp $
+ * $Id$
  */
 
 

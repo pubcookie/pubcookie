@@ -16,7 +16,7 @@
  */
 
 /*
-  $Id: index.cgi.h,v 1.64 2008/05/16 22:09:10 willey Exp $
+  $Id$
  */
 
 #ifndef PUBCOOKIE_LOGIN_CGI

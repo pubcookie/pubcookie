@@ -18,7 +18,7 @@
 /** @file verify_alwaystrue.c
  * Alwaystrue verifier
  *
- * $Id: verify_alwaystrue.c,v 1.19 2008/05/16 22:09:10 willey Exp $
+ * $Id$
  */
 
 

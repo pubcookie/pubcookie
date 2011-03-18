@@ -16,7 +16,7 @@
 //
 
 //
-//  $Id: debug.c,v 1.23 2009/06/26 17:35:44 dors Exp $
+//  $Id$
 //
 
 #include <windows.h>

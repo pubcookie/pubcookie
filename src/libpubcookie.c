@@ -18,7 +18,7 @@
 /** @file libpubcookie.c
  * Core pubcookie library
  *
- * $Id: libpubcookie.c,v 2.93 2008/05/16 22:09:10 willey Exp $
+ * $Id$
  */
 
 

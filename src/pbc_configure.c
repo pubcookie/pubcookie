@@ -18,7 +18,7 @@
 /** @file pbc_configure.c
  * Configure stuff
  *
- * $Id: pbc_configure.c,v 2.15 2008/05/16 22:09:10 willey Exp $
+ * $Id$
  */
 
 #ifdef HAVE_CONFIG_H

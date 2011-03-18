@@ -16,7 +16,7 @@
 //
 
 /*
-  $Id: winkeyclient.c,v 1.20 2009/06/26 17:35:45 dors Exp $
+  $Id$
  */
 #include <stdio.h>
 #include <stdlib.h>

@@ -18,7 +18,7 @@
 /** @file pbc_myconfig.c
  * Runtime configuration 
  *
- * $Id: pbc_myconfig.c,v 1.50 2008/05/16 22:09:10 willey Exp $
+ * $Id$
  */
 
 

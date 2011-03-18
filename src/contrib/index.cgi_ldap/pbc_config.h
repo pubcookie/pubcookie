@@ -27,7 +27,7 @@
  */
 
 /*
-    $Id: pbc_config.h,v 1.1 2001/12/14 00:39:00 willey Exp $
+    $Id$
  */
 
 #ifndef PUBCOOKIE_CONFIG

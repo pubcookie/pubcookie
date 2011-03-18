@@ -20,7 +20,7 @@
  *
  * Verifies users against an LDAP server (or servers.)
  * 
- * $Id: verify_ldap.c,v 1.35 2008/05/16 22:09:10 willey Exp $
+ * $Id$
  */
 
 #ifdef HAVE_CONFIG_H
