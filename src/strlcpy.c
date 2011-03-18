@@ -18,7 +18,7 @@
 /** @file strlcpy.c
  * strlcpy()
  *
- * $Id: strlcpy.c,v 2.15 2008/05/16 22:09:10 willey Exp $
+ * $Id$
  */
 
 

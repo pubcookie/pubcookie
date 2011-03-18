@@ -18,7 +18,7 @@
 /** @file what_is_my_ip.c
  * Identifies IP being used by pubcookie
  *
- * $Id: what_is_my_ip.c,v 1.17 2008/05/16 22:09:10 willey Exp $
+ * $Id$
  */
 
 

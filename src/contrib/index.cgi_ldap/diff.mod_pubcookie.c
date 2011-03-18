@@ -29,7 +29,7 @@
    */
   
   /*
-!     $Id: diff.mod_pubcookie.c,v 1.1 2001/12/14 00:38:59 willey Exp $
+!     $Id$
    */
   
   /* apache includes */
@@ -37,7 +37,7 @@
    */
   
   /*
-!     $Id: diff.mod_pubcookie.c,v 1.1 2001/12/14 00:38:59 willey Exp $
+!     $Id$
    */
   
   /* apache includes */

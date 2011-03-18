@@ -18,7 +18,7 @@
 /** @file capture_cmd_output.c
  * um, Captures command output
  *
- * $Id: capture_cmd_output.c,v 2.14 2008/05/16 22:09:10 willey Exp $
+ * $Id$
  */
 
 

@@ -23,7 +23,7 @@
  */
 
 /*
-    $Id: flavor_uwsecurid.c,v 2.20 2008/05/16 22:09:10 willey Exp $
+    $Id$
  */
 
 #ifdef HAVE_CONFIG_H

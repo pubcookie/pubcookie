@@ -16,7 +16,7 @@
  */
 
 /*
-    $Id: pubcookie.h,v 1.31 2008/05/16 22:09:10 willey Exp $
+    $Id$
  */
 
 #ifndef PUBCOOKIE_MAIN

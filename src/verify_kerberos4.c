@@ -18,7 +18,7 @@
 /** @file verify_kerberos4.c
  * Kerberos 4 verifier
  *
- * $Id: verify_kerberos4.c,v 1.19 2008/05/16 22:09:10 willey Exp $
+ * $Id$
  */
 
 

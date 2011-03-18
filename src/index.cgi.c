@@ -18,7 +18,7 @@
 /** @file index.cgi.c
  * Login server CGI
  *
- * $Id: index.cgi.c,v 1.189 2010/02/02 01:30:15 dors Exp $
+ * $Id$
  */
 
 #ifdef WITH_FCGI

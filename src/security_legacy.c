@@ -18,7 +18,7 @@
 /** @file security_legacy.c
  * Heritage message protection
  *
- * $Id: security_legacy.c,v 1.61 2008/05/16 22:09:10 willey Exp $
+ * $Id$
  */
 
 

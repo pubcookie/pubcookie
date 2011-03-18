@@ -22,7 +22,7 @@
  * - the policy of when freerides are allowed
  * - what the layout of the login page is, how login messages are printed. 
  *
- * $Id: flavor.h,v 1.17 2008/05/16 22:09:10 willey Exp $
+ * $Id$
  */
 
 #ifndef INCLUDED_FLAVOR_H

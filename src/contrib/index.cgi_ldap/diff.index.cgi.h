@@ -22,7 +22,7 @@
    */
   
   /*
-!     $Id: diff.index.cgi.h,v 1.1 2001/12/14 00:38:59 willey Exp $
+!     $Id$
    */
   
   typedef struct {
@@ -30,7 +30,7 @@
    */
   
   /*
-!     $Id: diff.index.cgi.h,v 1.1 2001/12/14 00:38:59 willey Exp $
+!     $Id$
    */
   
   typedef struct {

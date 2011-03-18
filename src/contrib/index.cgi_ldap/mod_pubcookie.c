@@ -19,7 +19,7 @@
  */
 
 /*
-    $Id: mod_pubcookie.c,v 1.1 2001/12/14 00:39:00 willey Exp $
+    $Id$
  */
 
 /* apache includes */

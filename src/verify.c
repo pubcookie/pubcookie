@@ -18,7 +18,7 @@
 /** @file verify.c
  * Verifier base stuff
  *
- * $Id: verify.c,v 1.29 2008/05/16 22:09:10 willey Exp $
+ * $Id$
  */
 
 

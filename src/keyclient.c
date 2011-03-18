@@ -18,7 +18,7 @@
 /** @file keyclient.c
  * Key administration tool for clients
  *
- * $Id: keyclient.c,v 2.65 2008/05/16 22:09:10 willey Exp $
+ * $Id$
  */
 
 

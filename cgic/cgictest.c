@@ -1,6 +1,6 @@
 
 /*
-  $Id: cgictest.c,v 1.2 2004/04/07 17:09:27 fox Exp $
+  $Id$
  */
 
 #include <stdio.h>

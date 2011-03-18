@@ -18,7 +18,7 @@
 /** @file keyserver.c
  * Server side of key management structure
  *
- * $Id: keyserver.c,v 2.70 2009/03/12 21:47:59 willey Exp $
+ * $Id$
  */
 
 

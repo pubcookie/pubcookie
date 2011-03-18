@@ -16,7 +16,7 @@
  */
 
 /*
-  $Id: pbc_time.h,v 2.5 2008/05/16 22:09:10 willey Exp $
+  $Id$
  */
 
 #ifndef INCLUDED_PBC_TIME_H

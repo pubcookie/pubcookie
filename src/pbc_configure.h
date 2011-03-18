@@ -16,7 +16,7 @@
  */
 
 /*
-  $Id: pbc_configure.h,v 2.14 2008/05/16 22:09:10 willey Exp $
+  $Id$
  */
 
 #ifndef INCLUDED_PBC_CONFIGURE_H

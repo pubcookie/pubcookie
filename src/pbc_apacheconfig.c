@@ -18,7 +18,7 @@
 /** @file pbc_apacheconfig.c
  * Apacheconfig
  *
- * $Id: pbc_apacheconfig.c,v 2.21 2008/05/16 22:09:10 willey Exp $
+ * $Id$
  */
 
 

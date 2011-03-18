@@ -25,7 +25,7 @@
 /** @file snprintf.c
  * snprintf()
  *
- * $Id: snprintf.c,v 2.9 2008/05/16 22:09:10 willey Exp $
+ * $Id$
  *
  * Original:
  * Patrick Powell Tue Apr 11 09:48:21 PDT 1995

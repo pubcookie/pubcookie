@@ -18,7 +18,7 @@
 /** @file pbc_myconfig.h
  * header file for Runtime configuration
  *
- * $Id: pbc_myconfig.h,v 1.27 2008/05/16 22:09:10 willey Exp $
+ * $Id$
  */
 
 

@@ -16,7 +16,7 @@
  */
 
 /*
-    $Id: verify.h,v 1.19 2008/05/16 22:09:10 willey Exp $
+    $Id$
  */
 
 #ifndef INCLUDED_VERIFY_H

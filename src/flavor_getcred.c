@@ -18,7 +18,7 @@
 /** @file flavor_getcred.c
  * Getcred flavor
  *
- * $Id: flavor_getcred.c,v 1.40 2008/05/16 22:09:10 willey Exp $
+ * $Id$
  */
 
 

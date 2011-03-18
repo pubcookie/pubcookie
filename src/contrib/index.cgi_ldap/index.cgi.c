@@ -21,7 +21,7 @@
  */
 
 /*
-    $Id: index.cgi.c,v 1.1 2001/12/14 00:38:59 willey Exp $
+    $Id$
  */
 
 

@@ -16,7 +16,7 @@
 //
 
 //
-//  $Id: debug.h,v 1.15 2008/05/16 22:09:10 willey Exp $
+//  $Id$
 //
 
 #include <windows.h>
