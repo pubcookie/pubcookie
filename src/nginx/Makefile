@@ -1,6 +1,6 @@
 
-PBC_VERSION = 3.3.4a
-NGX_VERSION = 0.8.52
+PBC_VERSION = 3.3.5
+NGX_VERSION = 0.8.54
 MOD_VERSION = 0.2
 VENDOR = vitki
 VERSION = $(NGX_VERSION)-$(PBC_VERSION)-$(MOD_VERSION)-$(VENDOR)
@@ -11,5 +11,5 @@ SOURCES = \
 	ngx_http_pubcookie_module.c
 
 dist: CHANGES README LICENSE config $(SOURCES)
-	cd ../.. && f=`readlink -f ../$(TARBALL)` && tar czf $$f --exclude .svn * && echo $$f
+	cd ../.. && tar czf ../$(TARBALL) --exclude .svn * && echo ../$(TARBALL)
 
