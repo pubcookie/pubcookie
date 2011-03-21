@@ -1213,6 +1213,7 @@ static int do_end_session_redirect (request_rec * r,
 
     ap_rprintf (r, redirect_html, refresh);
     ap_pfree (p, refresh);
+    r->keepalive = 0; /* workaround for keepalive problems after redirects */
 
     return (OK);
 }
@@ -1852,6 +1853,8 @@ static char *pubcookie_dir_merge (ngx_conf_t *cf, void *parent, void *child)
 
     if (! cfg->end_session.data)
         cfg->end_session = prv->end_session;
+    if (cfg->end_session.data && !cfg->appid.data)
+        return "pubcookie_end_session requires pubcookie_app_id";
 
     if (prv->addl_requests) {
         if (cfg->addl_requests)
@@ -1994,7 +1997,7 @@ static int pubcookie_user_hook (request_rec * r)
         auth_failed_handler (r, scfg, cfg, rr);
         return DONE;
     }
-    ap_log_rerror (PC_LOG_DEBUG, r, " .. user_hook: user '%s' OK", rr->USER);
+    ap_log_rerror (PC_LOG_DEBUG, r, " .. user_hook: user '%s' OK", rr->USER ? rr->USER : "NULL");
 
     if (rr->has_granting) {
         ap_log_rerror (PC_LOG_DEBUG, r, " .. user_hook: new session");
@@ -3024,7 +3027,7 @@ static const command_rec pubcookie_commands[] = {
       ngx_conf_set_str_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
       offsetof(ngx_pubcookie_loc_t, end_session),
-      pubcookie_post_end_session },
+      &pubcookie_conf_end_session },
 
     /* "Send the following options to the login server along with authentication requests" */
     { ngx_string("pubcookie_add_request"),
