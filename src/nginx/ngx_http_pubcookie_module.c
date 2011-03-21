@@ -125,6 +125,7 @@ static char *encode_get_args (ngx_http_request_t *r, char *in, int ec);
 static char *get_post_data (ngx_http_request_t * r, int post_len);
 
 static ngx_int_t pubcookie_post_handler (ngx_http_request_t *r);
+static ngx_int_t pubcookie_end_session_handler (ngx_http_request_t *r);
 static int pubcookie_authz_hook (request_rec * r);
 
 static ngx_int_t pubcookie_init (ngx_conf_t *cf);
@@ -2847,6 +2848,15 @@ pubcookie_set_post_url (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     return NGX_CONF_OK;
 }
 
+static char *
+pubcookie_post_end_session (ngx_conf_t *cf, void *data, void *conf)
+{
+    ngx_http_core_loc_conf_t  *core_lcf;
+    core_lcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
+    core_lcf->handler = pubcookie_end_session_handler;
+    return NGX_CONF_OK;
+}
+
 /*
  *  Configuration
  */
@@ -2858,6 +2868,7 @@ static ngx_conf_post_t pubcookie_conf_dirdepth = { pubcookie_post_dirdepth };
 static ngx_conf_post_t pubcookie_conf_domain = { pubcookie_post_domain };
 static ngx_conf_post_t pubcookie_conf_super_debug = { pubcookie_post_super_debug };
 static ngx_conf_post_t pubcookie_conf_noprompt = { pubcookie_post_noprompt };
+static ngx_conf_post_t pubcookie_conf_end_session = { pubcookie_post_end_session };
 
 
 static const command_rec pubcookie_commands[] = {
@@ -3013,7 +3024,7 @@ static const command_rec pubcookie_commands[] = {
       ngx_conf_set_str_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
       offsetof(ngx_pubcookie_loc_t, end_session),
-      NULL },
+      pubcookie_post_end_session },
 
     /* "Send the following options to the login server along with authentication requests" */
     { ngx_string("pubcookie_add_request"),
@@ -3647,6 +3658,17 @@ pubcookie_post_handler (ngx_http_request_t * r)
     ngx_int_t rc, rc2;
     pubcookie_setup_request(r);
     rc = login_reply_handler(r);
+    rc2 = pubcookie_finish_request(r);
+    return (rc2 == NGX_DECLINED ? rc : rc2);
+}
+
+
+static ngx_int_t
+pubcookie_end_session_handler (ngx_http_request_t * r)
+{
+    ngx_int_t rc, rc2;
+    pubcookie_setup_request(r);
+    rc = pubcookie_user_hook(r);
     rc2 = pubcookie_finish_request(r);
     return (rc2 == NGX_DECLINED ? rc : rc2);
 }
