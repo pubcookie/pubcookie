@@ -3023,7 +3023,7 @@ static const command_rec pubcookie_commands[] = {
 
     /* "End application session and possibly login session" */
     { ngx_string("pubcookie_end_session"),
-      NGX_HTTP_LOC_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
+      NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_str_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
       offsetof(ngx_pubcookie_loc_t, end_session),
@@ -3087,7 +3087,7 @@ static const command_rec pubcookie_commands[] = {
 
     /* "Set post response URL. Def = /PubCookie.reply" */
     { ngx_string("pubcookie_post"),
-      NGX_HTTP_LOC_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_MAIN_CONF|NGX_CONF_NOARGS,
+      NGX_HTTP_LOC_CONF|NGX_CONF_NOARGS,
       pubcookie_set_post_url,
       NGX_HTTP_SRV_CONF_OFFSET,
       offsetof(ngx_pubcookie_srv_t, post_reply_url),
