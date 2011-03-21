@@ -2717,7 +2717,7 @@ pubcookie_set_appid (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 }
 
 static char *
-pubcookie_add_request (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+pubcookie_addl_request (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
     ngx_pubcookie_loc_t *cfg = conf;
     cfg->addl_requests = join_ngx_strings (cf->pool, cfg->addl_requests,
@@ -3030,9 +3030,9 @@ static const command_rec pubcookie_commands[] = {
       &pubcookie_conf_end_session },
 
     /* "Send the following options to the login server along with authentication requests" */
-    { ngx_string("pubcookie_add_request"),
+    { ngx_string("pubcookie_addl_request"),
       NGX_HTTP_LOC_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_MAIN_CONF|NGX_CONF_1MORE,
-      pubcookie_add_request,
+      pubcookie_addl_request,
       NGX_HTTP_LOC_CONF_OFFSET,
       offsetof(ngx_pubcookie_loc_t, addl_requests),
       NULL },
