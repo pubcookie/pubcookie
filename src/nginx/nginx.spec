@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2010 VITKI
+# Copyright (C) 2010-2011 VITKI
 # RPM spec for custom Nginx with PubCookie
 #
 
@@ -13,10 +13,11 @@
 %define nginx_webroot   %{nginx_datadir}/html
 
 #<VITKI>#
-%define vitver  09
+%define vitver  11
 %define rhver   %((head -1 /etc/redhat-release 2>/dev/null || echo 0) | tr -cd 0-9 | cut -c1)
 %define relver  vitki.%{vitver}%{?dist}%{!?dist:.el%{rhver}}
 %define debug_package %{nil}
+%define _without_debugging 1
 %define _with_progress 1
 %define _without_slowfs 1
 %define _without_echo 1
@@ -29,7 +30,7 @@
 #</VITKI>#
 
 Name:           nginx
-Version:        0.8.52
+Version:        0.8.54
 Release:        %{relver}
 Summary:        Robust, small and high performance http and reverse proxy server
 Group:          System Environment/Daemons   
@@ -69,7 +70,7 @@ Source104:  404.html
 Source31:   masterzen-nginx-upload-progress-module-0.8.1-0.tar.gz
 Source32:   ngx_slowfs_cache-1.5.tar.gz
 Source33:   agentzh-echo-nginx-module-0.34.tar.gz
-Source34:   nginx_http_pubcookie-0.8.52-3.3.4a-0.1-vitki.tar.gz
+Source34:   nginx_http_pubcookie-0.8.54-3.3.5-0.3-vitki.tar.gz
 Source35:   nginx_http_ipguard-0.8.52-0.6-vitki.tar.gz
 Patch31:    nginx-dummy-try-files-0.8.52.patch
 #</VITKI>#
@@ -134,12 +135,12 @@ export DESTDIR=%{buildroot}
     --with-http_gzip_static_module \
     --with-http_stub_status_module \
     --with-http_perl_module \
-    --with-debug \
     --with-mail \
     --with-mail_ssl_module \
     --with-cc-opt="%{optflags} $(pcre-config --cflags)" \
     --add-module=%{_builddir}/nginx-%{version}/nginx-upstream-fair \
 %{?VITKI:} \
+%{?_with_debugging: --with-debug } \
 %{?_with_progress:  --add-module=%{_builddir}/nginx-%{version}/%(x=`basename %{SOURCE31}`; echo ${x%.tar.gz}) } \
 %{?_with_slowfs:    --add-module=%{_builddir}/nginx-%{version}/%(x=`basename %{SOURCE32}`; echo ${x%.tar.gz}) } \
 %{?_with_echo:      --add-module=%{_builddir}/nginx-%{version}/%(x=`basename %{SOURCE33}`; echo ${x%.tar.gz}) } \
@@ -240,6 +241,12 @@ fi
 
 
 %changelog
+* Wed Mar 22 2011 Vitki <vitki@vitki.net> - 0.8.54-10
+- New Pubcookie v.0.3 fixes google chrome bug
+
+* Sun Jan 16 2011 Vitki <vitki@vitki.net> - 0.8.52-10
+- New Pubcookie v.0.2 which returns status 200 or 301 instead of buggy 400
+
 * Tue Dec  7 2010 Vitki <vitki@vitki.net> - 0.8.52-09
 - Add support for IPguard authentication check
 
