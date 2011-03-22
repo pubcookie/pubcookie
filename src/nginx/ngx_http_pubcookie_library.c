@@ -34,6 +34,7 @@ static inline ngx_pool_t * pool_of (void *p)
 #define HAVE_STDARG_H
 #define HAVE_SNPRINTF
 #define HAVE_VSNPRINTF
+#define HAVE_SYS_UTSNAME_H
 #define strlcpy pbc_strlcpy
 #define strlcat pbc_strlcat
 #define assert(x) (0)
