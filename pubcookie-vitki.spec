@@ -1,10 +1,12 @@
 
-%define pubver  3.3.4a
-%define svnver  r1379
-%define vitkiv  01
+%define pubver  3.3.5
+%define svnid   $Id$
+%define vitver  03
+%global topdir  /usr/pubcookie
+
+%define svnver  r%(echo %{svnid} | tr -cd 0-9)
 %global rhel    %((head -1 /etc/redhat-release 2>/dev/null || echo 0) | tr -cd 0-9 | cut -c1)
-%define rdist   99.vitki.%{vitkiv}%{?dist}%{!?dist:.el%{rhel}}
-%global topdir  /usr/pubcookie     
+%define rdist   vitki.%{vitver}%{?dist}%{!?dist:.el%{rhel}}
 
 Name:		pubcookie
 Version:	%{pubver}.%{svnver}
@@ -16,7 +18,6 @@ URL:		http://www.pubcookie.org/
 Source0:	%{name}-%{version}.tar.gz
 BuildRoot:	%{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
-Requires:	httpd >= 2.2
 Requires:	openssl >= 0.9.8
 Requires:	xinetd >= 2
 
@@ -29,6 +30,15 @@ common web server platforms like Apache and Microsoft IIS.
 Together, these components can turn existing authentication services
 (like Kerberos, LDAP, or NIS) into a solution for single sign-on
 authentication to websites throughout an institution.
+
+%package apache
+Summary:    Pubcookie module for Apache
+Group:      System Environment/Daemons
+Requires:   httpd >= 2.2
+Requires:   pubcookie = %{version}-%{release}
+
+%description apache
+This package provides Pubcookie module for Apache.
 
 %prep
 %setup -c -q
@@ -68,7 +78,7 @@ rm -rf $RPM_BUILD_ROOT
 %files
 %defattr(-,root,root,0755)
 %dir %{topdir}
-%config %{topdir}/config
+%config(noreplace) %{topdir}/config
 %{topdir}/config.login.sample
 %dir %{topdir}/keys
 %dir %{topdir}/login
@@ -78,12 +88,25 @@ rm -rf $RPM_BUILD_ROOT
 %{topdir}/keyserver
 %{topdir}/starter.key
 %dir %{topdir}/login_templates
-%config %{topdir}/login_templates/*
+%config(noreplace) %{topdir}/login_templates/*
 %{topdir}/login_templates.default
 %{_sysconfdir}/xinetd.d/pubcookie-keyserver
+
+%files apache
 %{_libdir}/httpd/modules/mod_pubcookie.so
 
 %changelog
+* Wed Mar 22 2011 Vitki <vitki@vitki.net> - 3.3.5-0.3
+- Upgraded to Pubcookie 3.3.5
+- Fixed: Post method fails with Google Chrome (issue 194)
+- Fixed: Nested locations with pubcookie directives crash Nginx (issue 197)
+- Fixed: FreeBSD build fails due to "readlink -f" (issue 193)
+- Fixed: Logout does not work on Ubuntu (issue 195)
+- Fixed: Build fails on FreeBSD due to undefined struct utsname (issue 201)
+- Fixed: Directive pubcookie_post shall be disabled for main and server contexts (issue 196)
+- Fixed: Directive pubcookie_add_request should be renamed to pubcookie_addl_request (issue 198)
+- Fixed: Create ubuntu debs for pubcookie and nginx with pubcookie (issue 200)
+
 * Tue Oct 26 2010 Vitki <vitki@vitki.net> - 3.3.4a
 - Create RPM for CentOS 5.5
 
