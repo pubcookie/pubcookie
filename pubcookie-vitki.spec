@@ -7,6 +7,7 @@
 %define svnver  r%(echo %{svnid} | tr -cd 0-9)
 %global rhel    %((head -1 /etc/redhat-release 2>/dev/null || echo 0) | tr -cd 0-9 | cut -c1)
 %define rdist   vitki.%{vitver}%{?dist}%{!?dist:.el%{rhel}}
+%define debug_package %{nil}
 
 Name:		pubcookie
 Version:	%{pubver}.%{svnver}
