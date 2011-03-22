@@ -642,6 +642,9 @@ pubcookie_setup_request (ngx_http_request_t *r)
     ngx_pubcookie_srv_t *scfg = ngx_http_get_module_srv_conf(r, pubcookie_module);
     ngx_pubcookie_req_t *rr = ngx_http_get_module_ctx(r, pubcookie_module);
 
+    ap_log_rerror (PC_LOG_DEBUG, r,
+                    "pubcookie_setup_request: r:%p rr:%p scfg:%p",
+                    r, rr, scfg);
     scfg->log = r->connection->log;
     scfg->pool = r->pool;
 
