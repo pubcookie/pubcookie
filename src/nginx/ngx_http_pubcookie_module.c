@@ -1754,7 +1754,13 @@ static char *pubcookie_server_merge (ngx_conf_t *cf, void *parent, void *child)
     int i;
 
     ngx_conf_merge_value(scfg->dirdepth, sprv->dirdepth, PBC_DEFAULT_DIRDEPTH);
-    ngx_conf_merge_value(scfg->noblank, sprv->noblank, 0);
+    /*
+    ** Unlike pubcookie for apache, pubcookie for nginx does NOT blank cookies
+    ** by default, because nginx shares cookie array between requests, while
+    ** request structures are cleared, including notes table, resulting in
+    ** in lost cookie values.
+    */
+    ngx_conf_merge_value(scfg->noblank, sprv->noblank, 1);
     ngx_conf_merge_value(scfg->catenate, sprv->catenate, 0);
     ngx_conf_merge_value(scfg->no_clean_creds, sprv->no_clean_creds, 0);
     ngx_conf_merge_value(scfg->use_post, sprv->use_post, 0);
