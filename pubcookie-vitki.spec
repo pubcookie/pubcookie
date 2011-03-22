@@ -1,6 +1,6 @@
 
 %define pubver  3.3.5
-%define svnid   $Id$
+%define svnid   $Revision$
 %define vitver  03
 %global topdir  /usr/pubcookie
 
