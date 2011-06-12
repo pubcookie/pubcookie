@@ -1948,7 +1948,7 @@ static int pubcookie_user_hook (request_rec * r)
 
     ap_log_rerror (PC_LOG_DEBUG, r,
                    "pubcookie_user_hook: uri: %V location: \"%V\" auth_type: %s", &r->uri, &cfg->location,
-                   ap_auth_type (r));
+                   ap_auth_type (r) ? ap_auth_type (r) : "NONE");
 
     if (!ap_auth_type (r))
         return DECLINED;
@@ -2039,7 +2039,7 @@ static int pubcookie_user_hook (request_rec * r)
 
     ap_log_rerror (PC_LOG_DEBUG, r,
                    " .. user_hook exit: user '%s', type '%s'", rr->USER,
-                   rr->AUTH_TYPE);
+                   rr->AUTH_TYPE ? rr->AUTH_TYPE : "NULL" );
 
     return (s);
 }
