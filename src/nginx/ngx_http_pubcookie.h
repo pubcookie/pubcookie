@@ -65,7 +65,6 @@ typedef struct
     /* === config list === */
     ngx_str_t enterprise_domain;
     ngx_str_t keydir;
-    ngx_str_t granting_key_file;
     ngx_str_t granting_cert_file;
     ngx_str_t ssl_key_file;
     ngx_str_t ssl_cert_file;
@@ -82,7 +81,8 @@ typedef struct
     ngx_int_t use_post;
     ngx_uint_t crypt_alg;
     ngx_flag_t vitki_behind_proxy;
-    ngx_flag_t dummy_super_debug;
+    ngx_flag_t dummy_flag;
+    ngx_str_t  dummy_str;
 } ngx_pubcookie_srv_t;
 
 typedef struct

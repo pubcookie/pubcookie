@@ -1722,7 +1722,7 @@ static void *pubcookie_server_create (ngx_conf_t *cf)
     scfg->vitki_behind_proxy = NGX_CONF_UNSET;
 
     scfg->crypt_alg = NGX_CONF_UNSET_UINT;
-    scfg->dummy_super_debug = NGX_CONF_UNSET;
+    scfg->dummy_flag = NGX_CONF_UNSET;
 
     return (void *) scfg;
 }
@@ -2867,6 +2867,13 @@ pubcookie_post_end_session (ngx_conf_t *cf, void *data, void *conf)
     return NGX_CONF_OK;
 }
 
+/* deprecated */
+static char *
+pubcookie_set_granting_key_file (ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+{
+    return "granting_key_file: obsolete, please remove";
+}
+
 /*
  *  Configuration
  */
@@ -2933,9 +2940,9 @@ static const command_rec pubcookie_commands[] = {
     /* "Set the name of the keyfile for Granting PubCookies." */
     { ngx_string("pubcookie_granting_key_file"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
-      ngx_conf_set_str_slot,
+      pubcookie_set_granting_key_file,
       NGX_HTTP_SRV_CONF_OFFSET,
-      offsetof(ngx_pubcookie_srv_t, granting_key_file),
+      offsetof(ngx_pubcookie_srv_t, dummy_str),
       NULL },
 
     /* "Set the name of the certfile for Session PubCookies." */
@@ -3105,7 +3112,7 @@ static const command_rec pubcookie_commands[] = {
       NGX_HTTP_MAIN_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
       NGX_HTTP_SRV_CONF_OFFSET,
-      offsetof(ngx_pubcookie_srv_t, dummy_super_debug),
+      offsetof(ngx_pubcookie_srv_t, dummy_flag),
       &pubcookie_conf_super_debug },
 
     /* "Set to leave credentials in place after cleanup" */
@@ -3143,7 +3150,6 @@ pbc_cfg_str_fields[] = {
     { "enterprise_domain",  offsetof(ngx_pubcookie_srv_t, enterprise_domain) },
     { "ssl_key_file",       offsetof(ngx_pubcookie_srv_t, ssl_key_file) },
     { "ssl_cert_file",      offsetof(ngx_pubcookie_srv_t, ssl_cert_file) },
-    { "granting_key_file",  offsetof(ngx_pubcookie_srv_t, granting_key_file) },
     { "granting_cert_file", offsetof(ngx_pubcookie_srv_t, granting_cert_file) },
     { "crypt_key",          offsetof(ngx_pubcookie_srv_t, crypt_key) },
     { "login_uri",          offsetof(ngx_pubcookie_srv_t, login) },
