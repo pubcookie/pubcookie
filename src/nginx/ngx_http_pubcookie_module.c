@@ -307,10 +307,8 @@ static char *
 ap_get_server_name (ngx_http_request_t *r)
 {
     ngx_pubcookie_req_t *rr = ngx_http_get_module_ctx(r, pubcookie_module);
-    if (! rr->server_name_tmp) {
-        ngx_http_core_srv_conf_t *core_scf = ngx_http_get_module_srv_conf(r, ngx_http_core_module);
-        rr->server_name_tmp = str2charp(r->pool, &core_scf->server_name);
-    }
+    if (! rr->server_name_tmp)
+        rr->server_name_tmp = str2charp(r->pool, &r->headers_in.host->value);
     return rr->server_name_tmp;
 }
 
