@@ -3709,6 +3709,25 @@ pubcookie_user_variable (ngx_http_request_t *r, ngx_http_variable_value_t *v, ui
 }
 
 static ngx_int_t
+pubcookie_auth_type_variable (ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data)
+{
+    pubcookie_req_rec *rr = ngx_http_get_module_ctx(r, pubcookie_module);
+
+    if (!(rr && rr->AUTH_TYPE && *rr->AUTH_TYPE)) {
+        v->not_found = 1;
+        return NGX_OK;
+    }
+
+    v->data = rr->AUTH_TYPE;
+    v->len = strlen(rr->AUTH_TYPE);
+    v->valid = 1;
+    v->no_cacheable = 0;
+    v->not_found = 0;
+
+    return NGX_OK;
+}
+
+static ngx_int_t
 pubcookie_demand_key_variable (ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data)
 {
     v->not_found = 1;
@@ -3717,6 +3736,7 @@ pubcookie_demand_key_variable (ngx_http_request_t *r, ngx_http_variable_value_t 
 
 static ngx_http_variable_t  pubcookie_variables[] = {
     { ngx_string("pubcookie_user"), NULL, pubcookie_user_variable, 0, 0, 0 },
+    { ngx_string("pubcookie_auth_type"), NULL, pubcookie_auth_type_variable, 0, 0, 0 },
     { ngx_string("pubcookie_demand_key"), NULL, pubcookie_demand_key_variable, 0, 0, 0 },
     { ngx_null_string, NULL, NULL, 0, 0, 0 }
 };
