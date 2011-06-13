@@ -134,6 +134,7 @@ static char pubcookie_auth_type (ngx_http_request_t * r);
 
 static int pubcookie_user (request_rec * r, pubcookie_server_rec *scfg, pubcookie_dir_rec *cfg, pubcookie_req_rec *rr);
 static int pubcookie_user_hook (ngx_http_request_t * r);
+static int pubcookie_set_remote_user (ngx_http_request_t *r, ngx_pubcookie_req_t *rr);
 
 static void dump_recs (request_rec *r, pubcookie_server_rec *s, pubcookie_dir_rec *c);
 static void dump_cookie_data (request_rec *r, const char *prefix, pbc_cookie_data *cookie_data);
@@ -665,6 +666,8 @@ pubcookie_finish_request (ngx_http_request_t *r)
     ngx_chain_t out;
     u_char *msg;
     int len;
+
+    pubcookie_set_remote_user(r, rr);
 
     if (!rr || !rr->msg.data)
         return NGX_DECLINED;
@@ -1742,6 +1745,7 @@ static void *pubcookie_dir_create (ngx_conf_t *cf)
     cfg->session_reauth = NGX_CONF_UNSET;
     cfg->strip_realm = NGX_CONF_UNSET;
     cfg->noprompt = NGX_CONF_UNSET;
+    cfg->set_remote_user = NGX_CONF_UNSET;
 
     return (void *) cfg;
 }
@@ -1828,6 +1832,7 @@ static char *pubcookie_dir_merge (ngx_conf_t *cf, void *parent, void *child)
     ngx_conf_merge_value(cfg->session_reauth, prv->session_reauth, 0);
     ngx_conf_merge_value(cfg->strip_realm, prv->strip_realm, 0);
     ngx_conf_merge_value(cfg->noprompt, prv->noprompt, 0);
+    ngx_conf_merge_value(cfg->set_remote_user, prv->set_remote_user, 0);
 
     /***
      * Okay.  We might need to catenate app IDs.  We'll know at
@@ -3131,6 +3136,14 @@ static const command_rec pubcookie_commands[] = {
       offsetof(ngx_pubcookie_srv_t, vitki_behind_proxy),
       NULL },
 
+    /* "Strip the realm (and set the REMOTE_REALM envirorment variable)" */
+    { ngx_string("pubcookie_set_remote_user"),
+      NGX_HTTP_LOC_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_MAIN_CONF|NGX_CONF_FLAG,
+      ngx_conf_set_flag_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_pubcookie_loc_t, set_remote_user),
+      NULL },
+
 /* maybe for future exploration
 */
     /* "Set the non_ssl_ok." */
@@ -3687,6 +3700,70 @@ pubcookie_end_session_handler (ngx_http_request_t * r)
     rc = pubcookie_user_hook(r);
     rc2 = pubcookie_finish_request(r);
     return (rc2 == NGX_DECLINED ? rc : rc2);
+}
+
+/* variables */
+
+static int
+pubcookie_set_remote_user (ngx_http_request_t *r, ngx_pubcookie_req_t *rr)
+{
+    static ngx_str_t basic = ngx_string("Basic ");
+    ngx_str_t   auth, encoded, value;
+    ngx_uint_t  ulen, len;
+    pubcookie_dir_rec *cfg = ngx_http_get_module_loc_conf(r, pubcookie_module);
+
+    if (!cfg || !cfg->set_remote_user || !rr)
+        return NGX_DECLINED;
+
+    r->headers_in.authorization = NULL;
+    r->headers_in.user.data = (u_char *) "";
+    r->headers_in.user.len = 0;
+
+    if (!(rr->USER && *rr->USER))
+        return NGX_OK;
+
+    ulen = strlen(rr->USER);
+
+    /* prepare data for basic authenticator */
+    if (!rr->basic_auth_elt) {
+        auth.len = ulen + 2;
+        auth.data = ngx_pnalloc(r->pool, auth.len + 1);
+        if (NULL == auth.data)
+            return NGX_ERROR;
+
+        ngx_memcpy(auth.data, rr->USER, ulen);
+        auth.data[ulen + 0] = ':';
+        auth.data[ulen + 1] = ' ';
+        auth.data[ulen + 2] = '\0';
+
+        len = ngx_base64_encoded_length(auth.len);
+        value.len = basic.len + len;
+        value.data = ngx_pnalloc(r->pool, value.len + 1);
+        if (NULL == value.data)
+            return NGX_ERROR;
+
+        encoded.data = value.data + basic.len;
+        encoded.len = value.len - basic.len;
+        ngx_encode_base64(&encoded, &auth);
+
+        ngx_memcpy(value.data, basic.data, basic.len);
+        value.data[value.len] = '\0';
+        ngx_pfree(r->pool, &auth);
+
+        rr->basic_auth_elt = ngx_pcalloc(r->pool, sizeof(ngx_table_elt_t));
+        if (NULL == rr->basic_auth_elt)
+            return NGX_ERROR;
+        rr->basic_auth_elt->value = value;
+    }
+
+    r->headers_in.authorization = rr->basic_auth_elt;
+
+    r->headers_in.user.data = rr->USER;
+    r->headers_in.user.len = ulen;
+    r->headers_in.passwd.data = (u_char *) " ";
+    r->headers_in.passwd.len = 1;
+
+    return NGX_OK;
 }
 
 static ngx_int_t

@@ -53,6 +53,7 @@ typedef struct {
     char * addl_requests;
     ngx_flag_t noprompt;
     ngx_array_t *keydirs;
+    ngx_flag_t set_remote_user;
 } ngx_pubcookie_loc_t;
 
 typedef struct
@@ -103,6 +104,7 @@ typedef struct
     ngx_str_t app_path;
     ngx_array_t *notes;
     char *server_name_tmp;
+    ngx_table_elt_t *basic_auth_elt;
 } ngx_pubcookie_req_t;
 
 /***********************************
