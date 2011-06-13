@@ -128,7 +128,7 @@ static ngx_int_t pubcookie_post_handler (ngx_http_request_t *r);
 static ngx_int_t pubcookie_end_session_handler (ngx_http_request_t *r);
 static int pubcookie_authz_hook (request_rec * r);
 
-static ngx_int_t pubcookie_init (ngx_conf_t *cf);
+static ngx_int_t pubcookie_post_init (ngx_conf_t *cf);
 
 static char pubcookie_auth_type (ngx_http_request_t * r);
 
@@ -1688,7 +1688,7 @@ char *get_cookie (request_rec * r, char *name, int n)
 
 /* Initialize after config file commands have been processed */
 
-static ngx_int_t pubcookie_init (ngx_conf_t *cf)
+static ngx_int_t pubcookie_post_init (ngx_conf_t *cf)
 {
     ngx_http_handler_pt        *h;
     ngx_http_core_main_conf_t  *core_cf;
@@ -3689,10 +3689,52 @@ pubcookie_end_session_handler (ngx_http_request_t * r)
     return (rc2 == NGX_DECLINED ? rc : rc2);
 }
 
+static ngx_int_t
+pubcookie_user_variable(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data)
+{
+    pubcookie_req_rec *rr = ngx_http_get_module_ctx(r, pubcookie_module);
+
+    if (!(rr && rr->USER && *rr->USER)) {
+        v->not_found = 1;
+        return NGX_OK;
+    }
+
+    v->data = rr->USER;
+    v->len = strlen(rr->USER);
+    v->valid = 1;
+    v->no_cacheable = 0;
+    v->not_found = 0;
+
+    return NGX_OK;
+}
+
+static ngx_http_variable_t  pubcookie_variables[] = {
+    { ngx_string("pubcookie_user"), NULL, pubcookie_user_variable, 0, 0, 0 },
+    { ngx_null_string, NULL, NULL, 0, 0, 0 }
+};
+
+static ngx_int_t
+pubcookie_pre_init (ngx_conf_t *cf)
+{
+    ngx_http_variable_t  *var, *v;
+
+    /* Add variables */
+    for (v = pubcookie_variables; v->name.len; v++) {
+        var = ngx_http_add_variable(cf, &v->name, v->flags);
+        if (var == NULL) {
+            return NGX_ERROR;
+        }
+
+        var->get_handler = v->get_handler;
+        var->data = v->data;
+    }
+
+    return NGX_OK;
+}
 
 static ngx_http_module_t  pubcookie_module_ctx = {
-    NULL,                       /* preconfiguration */
-    pubcookie_init,             /* postconfiguration */
+    pubcookie_pre_init,         /* preconfiguration */
+    pubcookie_post_init,        /* postconfiguration */
 
     NULL,                       /* create main configuration */
     NULL,                       /* init main configuration */
