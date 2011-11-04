@@ -122,7 +122,11 @@ static pbc_param_off_t pbc_cfg_str_fields[];
 static u_char *ngx_pstrcat3 (ngx_pool_t *pool, ngx_str_t *res, ngx_str_t *s1, ngx_str_t *s2, ngx_str_t *s3);
 
 static char *encode_get_args (ngx_http_request_t *r, char *in, int ec);
-static char *get_post_data (ngx_http_request_t * r, int post_len);
+
+typedef void (*ngx_post_data_handler_t)(ngx_http_request_t *);
+#define NGX_POST_HANDLER_IGNORE  ((ngx_post_data_handler_t)0)
+#define NGX_POST_HANDLER_READY   ((ngx_post_data_handler_t)-1)
+static char *get_post_data_ext (ngx_http_request_t * r, int post_len, ngx_post_data_handler_t handler);
 
 static ngx_int_t pubcookie_post_handler (ngx_http_request_t *r);
 static ngx_int_t pubcookie_end_session_handler (ngx_http_request_t *r);
@@ -787,7 +791,7 @@ create_location (ngx_conf_t *cf, const char *loc_name)
 static void dummy_body_handler (ngx_http_request_t *r) {}
 
 static
-char *get_post_data (request_rec * r, int post_len)
+char *get_post_data_ext (request_rec * r, int post_len, ngx_post_data_handler_t handler)
 {
     char *buffer;
     char *bp;
@@ -801,10 +805,16 @@ char *get_post_data (request_rec * r, int post_len)
 
     r->request_body_in_file_only = 0;
     /* r->request_body_in_single_buf = 1; */
-    rc = ngx_http_read_client_request_body(r, dummy_body_handler);
-    if (rc >= NGX_HTTP_SPECIAL_RESPONSE) {
-        ngx_http_finalize_request(r, rc);
-        return NULL;
+    
+    if (handler != NGX_POST_HANDLER_READY) {
+        if (handler != NGX_POST_HANDLER_IGNORE) {
+            return (char *) ngx_http_read_client_request_body(r, handler);
+        }
+        rc = ngx_http_read_client_request_body(r, dummy_body_handler);
+        if (rc >= NGX_HTTP_SPECIAL_RESPONSE) {
+            ngx_http_finalize_request(r, rc);
+            return NULL;
+        }
     }
 
     if (NULL == (bp = buffer = ap_pnalloc (r->pool, post_len + 1))) {
@@ -1511,7 +1521,7 @@ static int auth_failed_handler (request_rec * r,
         int post_data_len;
         if ((post_data_len = r->headers_in.content_length_n) <= 0 ||
             post_data_len > MAX_POST_DATA ||
-            (!(post_data = get_post_data (r, post_data_len)))) {
+            (!(post_data = get_post_data_ext (r, post_data_len, NGX_POST_HANDLER_IGNORE)))) {
             rr->stop_message =
                 ap_psprintf (p,
                              "Invalid POST data. (POST data length: %d)",
@@ -3576,7 +3586,7 @@ static int login_reply_handler (request_rec * r)
         scan_args (r, args, arg);
     }
     if (r->headers_in.content_length_n > 0) {
-        post_data = get_post_data (r, r->headers_in.content_length_n);
+        post_data = get_post_data_ext (r, r->headers_in.content_length_n, NGX_POST_HANDLER_READY);
         if (! post_data)
             return NGX_HTTP_INTERNAL_SERVER_ERROR;
         scan_args (r, args, post_data);
@@ -3681,14 +3691,34 @@ static int login_reply_handler (request_rec * r)
     return (OK);
 }
 
+static void
+pubcookie_post_data_handler (ngx_http_request_t * r)
+{
+    ngx_int_t rc1, rc2;
+    rc1 = login_reply_handler(r);
+    rc2 = pubcookie_finish_request(r);
+    if (rc2 == NGX_DECLINED) {
+        r->headers_out.status = rc2 = rc1 ? rc1 : NGX_HTTP_OK;
+        r->header_only = 1;
+        ngx_http_send_header(r);
+    }
+    ngx_http_finalize_request(r, rc2);
+}
+
 static ngx_int_t
 pubcookie_post_handler (ngx_http_request_t * r)
 {
-    ngx_int_t rc, rc2;
+    int rc, post_len;
     pubcookie_setup_request(r);
-    rc = login_reply_handler(r);
-    rc2 = pubcookie_finish_request(r);
-    return (rc2 == NGX_DECLINED ? rc : rc2);
+    post_len = r->headers_in.content_length_n;
+    if (post_len > 0) {
+        rc = (int) get_post_data_ext(r, post_len, pubcookie_post_data_handler);
+        if (rc >= NGX_HTTP_SPECIAL_RESPONSE)
+            return rc;
+    } else {
+        pubcookie_post_data_handler(r);
+    }
+    return NGX_DONE;
 }
 
 
