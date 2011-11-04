@@ -13,7 +13,7 @@
 %define nginx_webroot   %{nginx_datadir}/html
 
 #<VITKI>#
-%define vitver  11
+%define vitver  12
 %define rhver   %((head -1 /etc/redhat-release 2>/dev/null || echo 0) | tr -cd 0-9 | cut -c1)
 %define relver  vitki.%{vitver}%{?dist}%{!?dist:.el%{rhver}}
 %define debug_package %{nil}
@@ -25,12 +25,12 @@
 %define _without_pbc_trunk 1
 %define _with_ipguard 1
 %define _without_ipg_trunk 1
-%define pubcookie_trunk_dir /root/pubcookie/trunk
+%define pubcookie_trunk_dir /root/pubcookie/svn/trunk
 %define ipguard_trunk_dir /root/ipguard
 #</VITKI>#
 
 Name:           nginx
-Version:        0.8.54
+Version:        1.0.9
 Release:        %{relver}
 Summary:        Robust, small and high performance http and reverse proxy server
 Group:          System Environment/Daemons   
@@ -70,7 +70,7 @@ Source104:  404.html
 Source31:   masterzen-nginx-upload-progress-module-0.8.1-0.tar.gz
 Source32:   ngx_slowfs_cache-1.5.tar.gz
 Source33:   agentzh-echo-nginx-module-0.34.tar.gz
-Source34:   nginx_http_pubcookie-0.8.54-3.3.5-0.3-vitki.tar.gz
+Source34:   nginx_http_pubcookie-1.0.4-3.3.5-0.5-vitki.tar.gz
 Source35:   nginx_http_ipguard-0.8.52-0.6-vitki.tar.gz
 Patch31:    nginx-dummy-try-files-0.8.52.patch
 #</VITKI>#
@@ -241,11 +241,19 @@ fi
 
 
 %changelog
-* Wed Mar 22 2011 Vitki <vitki@vitki.net> - 0.8.54-10
-- New Pubcookie v.0.3 fixes google chrome bug
+* Fri Nov  4 2011 Vitki <vitki@vitki.net> - 1.0.9-12
+- Update to Nginx 1.0.9
+- New Pubcookie v0.5 fixes "No granting cookie" with Chrome 12+
+
+* Thu Jun  9 2011 Vitki <vitki@vitki.net> - 1.0.4-11
+- Update to Nginx 1.0.4
+- New Pubcookie v0.4 add support for $remote_user and fixes a few bugs
+
+* Wed Mar 22 2011 Vitki <vitki@vitki.net> - 0.8.54-11
+- New Pubcookie v0.3 fixes google chrome bug
 
 * Sun Jan 16 2011 Vitki <vitki@vitki.net> - 0.8.52-10
-- New Pubcookie v.0.2 which returns status 200 or 301 instead of buggy 400
+- New Pubcookie v0.2 which returns status 200 or 301 instead of buggy 400
 
 * Tue Dec  7 2010 Vitki <vitki@vitki.net> - 0.8.52-09
 - Add support for IPguard authentication check
