@@ -2554,11 +2554,11 @@ static int pubcookie_authz_hook (request_rec * r)
     pubcookie_server_rec *scfg = ngx_http_get_module_srv_conf(r, pubcookie_module);
 
     if (!ap_auth_type (r))
-        return DECLINED;
+        return OK /*DECLINED*/;
 
     /* get pubcookie creds or bail if not a pubcookie auth_type */
     if (pubcookie_auth_type (r) == PBC_CREDS_NONE)
-        return DECLINED;
+        return OK /*DECLINED*/;
 
     if (ngx_strcasecmp_c (r->uri, "/favicon.ico"))
         return OK;
@@ -2576,7 +2576,7 @@ static int pubcookie_authz_hook (request_rec * r)
     pubcookie_setup_request(r);
     rc = pubcookie_user_hook(r);
     rc2 = pubcookie_finish_request(r);
-    return (rc2 == DECLINED ? rc : rc2);
+    return (rc2 == DECLINED ? (rc == DECLINED ? OK : rc): rc2);
 }
 
 /* Set any additional environment variables for the client */

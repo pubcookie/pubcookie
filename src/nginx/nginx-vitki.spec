@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2010-2011 VITKI
+# Copyright (C) 2010-2012 VITKI
 # RPM spec for custom Nginx with PubCookie
 #
 
@@ -13,7 +13,7 @@
 %define nginx_webroot   %{nginx_datadir}/html
 
 #<VITKI>#
-%define vitver  12
+%define vitver  15
 %define rhver   %((head -1 /etc/redhat-release 2>/dev/null || echo 0) | tr -cd 0-9 | cut -c1)
 %define relver  vitki.%{vitver}%{?dist}%{!?dist:.el%{rhver}}
 %define debug_package %{nil}
@@ -25,12 +25,12 @@
 %define _without_pbc_trunk 1
 %define _with_ipguard 1
 %define _without_ipg_trunk 1
-%define pubcookie_trunk_dir /root/pubcookie/svn/trunk
+%define pubcookie_trunk_dir /root/pubcookie
 %define ipguard_trunk_dir /root/ipguard
 #</VITKI>#
 
 Name:           nginx
-Version:        1.0.9
+Version:        1.2.0
 Release:        %{relver}
 Summary:        Robust, small and high performance http and reverse proxy server
 Group:          System Environment/Daemons   
@@ -67,12 +67,12 @@ Source103:  50x.html
 Source104:  404.html
 
 #<VITKI>#
-Source31:   masterzen-nginx-upload-progress-module-0.8.1-0.tar.gz
+Source31:   masterzen-nginx-upload-progress-module-0.9.0-0.tar.gz
 Source32:   ngx_slowfs_cache-1.5.tar.gz
 Source33:   agentzh-echo-nginx-module-0.34.tar.gz
-Source34:   nginx_http_pubcookie-1.0.4-3.3.5-0.5-vitki.tar.gz
-Source35:   nginx_http_ipguard-0.8.52-0.6-vitki.tar.gz
-Patch31:    nginx-dummy-try-files-0.8.52.patch
+Source34:   nginx_http_pubcookie-1.2.0-3.3.5-0.6-vitki.tar.gz
+Source35:   nginx_http_ipguard-1.2.0-0.7-vitki.tar.gz
+Patch31:    nginx-dummy-try-files-1.0.11.patch
 #</VITKI>#
 
 # removes -Werror in upstream build scripts.  -Werror conflicts with
@@ -140,6 +140,7 @@ export DESTDIR=%{buildroot}
     --with-cc-opt="%{optflags} $(pcre-config --cflags)" \
     --add-module=%{_builddir}/nginx-%{version}/nginx-upstream-fair \
 %{?VITKI:} \
+    --with-ipv6 \
 %{?_with_debugging: --with-debug } \
 %{?_with_progress:  --add-module=%{_builddir}/nginx-%{version}/%(x=`basename %{SOURCE31}`; echo ${x%.tar.gz}) } \
 %{?_with_slowfs:    --add-module=%{_builddir}/nginx-%{version}/%(x=`basename %{SOURCE32}`; echo ${x%.tar.gz}) } \
@@ -241,6 +242,16 @@ fi
 
 
 %changelog
+* Tue May 15 2012 Vitki <vitki@vitki.net> - 1.2.0-15
+- Update to Nginx 1.2.0
+- Update to Upload module 0.9.0 (fixes incompatibility with latest nginx)
+- Update to IPguard module 0.7 (fixes 64-bit build)
+- Update to Pubcookie module 0.6 (fixes 64-bit build)
+
+* Fri Dec 23 2011 Vitki <vitki@vitki.net> - 1.0.11-13
+- Update to Nginx 1.0.11
+- Enable IPv6
+
 * Fri Nov  4 2011 Vitki <vitki@vitki.net> - 1.0.9-12
 - Update to Nginx 1.0.9
 - New Pubcookie v0.5 fixes "No granting cookie" with Chrome 12+

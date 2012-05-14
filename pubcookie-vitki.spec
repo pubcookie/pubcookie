@@ -1,7 +1,7 @@
 
 %define pubver  3.3.5
 %define svnid   $Revision$
-%define vitver  04
+%define vitver  06
 %global topdir  /usr/pubcookie
 
 %define svnver  r%(echo %{svnid} | tr -cd 0-9)
